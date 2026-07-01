@@ -1,6 +1,3 @@
-# DRAFT — staged flake.nix for the standalone `nebelhaus/pounce` repo.
-# Renamed to flake.nix.draft so it isn't evaluated until the source
-# (pkgs/pounce, pkgs/pounce-commands) is copied in. See MIGRATION.md.
 {
   description = "Pounce — a native, scriptable command palette for macOS";
 
