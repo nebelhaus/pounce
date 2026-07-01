@@ -45,6 +45,12 @@ pkgs/pounce-commands/   default.nix (the command registry) + commands/*.sh
   rebuild. The *rice* (`nebelhaus/modules/pounce`) re-signs a stable copy to keep the
   grant — that logic lives there, not here. Here, just: `pounce --request-accessibility`
   / `--check-accessibility`.
+- **Theming**: colors live in `Palette` (`main.swift`). The default **nebelung**
+  palette is *generated at build time* from the `nebelung` flake input's `palette`
+  output into `Palette+nebelung.generated.swift` (see `pkgs/pounce/default.nix`) —
+  don't hand-edit hex for it; change it in the nebelung repo and
+  `nix flake update nebelung`. Other palettes (e.g. `mocha`) are inlined literals.
+  Pick one at runtime with `"theme"` in `config.json`.
 
 ## Conventions
 

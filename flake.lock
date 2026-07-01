@@ -1,6 +1,58 @@
 {
   "nodes": {
+    "catppuccin": {
+      "inputs": {
+        "nixpkgs": "nixpkgs"
+      },
+      "locked": {
+        "lastModified": 1782648384,
+        "narHash": "sha256-OlHdAqdXasZk1U+Zf9n+ivqHL9kj/UD0DFO4yYTNBYc=",
+        "owner": "catppuccin",
+        "repo": "nix",
+        "rev": "f2c7dd14ecce785c206a39466cbe227ff62e3803",
+        "type": "github"
+      },
+      "original": {
+        "owner": "catppuccin",
+        "repo": "nix",
+        "type": "github"
+      }
+    },
+    "nebelung": {
+      "inputs": {
+        "catppuccin": "catppuccin",
+        "nixpkgs": [
+          "nixpkgs"
+        ]
+      },
+      "locked": {
+        "lastModified": 1782913440,
+        "narHash": "sha256-EoZdoiMsKM5jXo6BBUR2PgKXkViXRtiVSWzX/BTyObY=",
+        "owner": "nebelhaus",
+        "repo": "nebelung",
+        "rev": "2f564a064ed8020bbeb031554d17065a6b7e996d",
+        "type": "github"
+      },
+      "original": {
+        "owner": "nebelhaus",
+        "repo": "nebelung",
+        "type": "github"
+      }
+    },
     "nixpkgs": {
+      "locked": {
+        "lastModified": 1782175435,
+        "narHash": "sha256-8d2wCNWKnd86GzKZvbuqqlS+HqMrheXkvRf0qGJ/oA0=",
+        "rev": "89570f24e97e614aa34aa9ab1c927b6578a43775",
+        "type": "tarball",
+        "url": "https://releases.nixos.org/nixpkgs/nixpkgs-26.11pre1020805.89570f24e97e/nixexprs.tar.xz"
+      },
+      "original": {
+        "type": "tarball",
+        "url": "https://channels.nixos.org/nixpkgs-unstable/nixexprs.tar.xz"
+      }
+    },
+    "nixpkgs_2": {
       "locked": {
         "lastModified": 1782821651,
         "narHash": "sha256-D5jO0ME1lA9bDHnd5kVawBwItG/N4oZr3FlXmMzLec8=",
@@ -18,7 +70,8 @@
     },
     "root": {
       "inputs": {
-        "nixpkgs": "nixpkgs"
+        "nebelung": "nebelung",
+        "nixpkgs": "nixpkgs_2"
       }
     }
   },

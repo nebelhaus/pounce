@@ -142,6 +142,30 @@ The batteries-included set (wifi, ports, clipboard, emoji, screenshots,
 brew-services, lock, force-quit, …) all live in `commands/` as worked examples —
 copy one and go.
 
+## configuration
+
+Optional settings live in `~/.config/pounce/config.json`. The file is re-read on
+every open, so edits apply on the next launch — no restart needed. Every key is
+optional and falls back to a default.
+
+```jsonc
+{
+  "theme": "nebelung",      // color palette: "nebelung" (default) or "mocha"
+  "windowMode": "default",  // "default" or "compact"
+  "clipboard": {
+    "enabled": true,
+    "maxEntries": 200,
+    "autoPaste": false      // synthesize ⌘V into the prior app (needs Accessibility)
+  }
+}
+```
+
+The default **nebelung** palette is the desaturated Catppuccin used across the
+[nebelhaus](https://github.com/nebelhaus) rice — it's baked into the binary at
+build time straight from the [nebelung](https://github.com/nebelhaus/nebelung)
+flake, so it never drifts from the rest of the theme. Set `"theme": "mocha"` for
+stock Catppuccin Mocha.
+
 ## building from source
 
 ```sh
