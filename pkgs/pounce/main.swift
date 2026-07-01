@@ -1117,12 +1117,20 @@ final class PounceUI {
             // bottom — no vertical slide.
             let contentH = window.contentView?.bounds.height ?? window.frame.height
             hosting.frame = NSRect(x: 0, y: contentH - h, width: w, height: h)
-            NSAnimationContext.runAnimationGroup { ctx in
+            NSAnimationContext.runAnimationGroup({ ctx in
                 ctx.duration = 0.09
                 ctx.timingFunction = CAMediaTimingFunction(name: .easeOut)
                 ctx.allowsImplicitAnimation = true
                 window.animator().setFrame(f, display: true)
-            }
+            }, completionHandler: { [weak self] in
+                // When the window WIDTH changes (e.g. the 720/600 launcher swapping
+                // into an 820 two-pane view), the .width autoresizing mask inflates
+                // hosting by the same delta, leaving it wider than the content view —
+                // NSHostingView then centres the fixed-width content and it drifts
+                // right. Snap the frame back to the final bounds so it stays flush.
+                guard let self = self else { return }
+                self.hosting.frame = self.window.contentView?.bounds ?? .zero
+            })
         } else {
             // Commit the frame + hosting bounds atomically with implicit animation
             // off, so the blur material can't animate/flicker through the resize.
