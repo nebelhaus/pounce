@@ -21,7 +21,7 @@ struct Commit {
 
 // MARK: - State
 
-enum DisplayMode { case list, clipboard, emoji, screenshots }
+enum DisplayMode { case list, clipboard, emoji, screenshots, camera }
 
 final class DaemonState: ObservableObject {
     @Published var items: [PounceItem] = []
@@ -53,6 +53,7 @@ final class DaemonState: ObservableObject {
         case .clipboard: return ClipboardLayout.width
         case .emoji: return EmojiLayout.width
         case .screenshots: return ScreenshotLayout.width
+        case .camera: return CameraLayout.width
         case .list: return metrics.width
         }
     }
@@ -65,6 +66,10 @@ final class DaemonState: ObservableObject {
     weak var textField: NSTextField?
 
     func reset() {
+        // A new request replaces whatever mode is up; make sure a live camera
+        // session from a previous peek doesn't keep the hardware (and its
+        // indicator light) on behind the next view.
+        if displayMode == .camera { CameraController.shared.stop() }
         items = []
         itemsSorted = []
         frecencyScores = [:]
@@ -115,6 +120,14 @@ final class DaemonState: ObservableObject {
     func commitScreenshot(_ entry: ScreenshotEntry) {
         Pasteboard.copyFile(URL(fileURLWithPath: entry.path))
         onCommit?(Commit(clientString: "", disposition: .hideNow, appLaunch: nil))
+    }
+
+    // Show the live camera peek; the capture session starts immediately so the
+    // first frames are already flowing by the time the window fades in.
+    func loadCamera(placeholder: String?) {
+        displayMode = .camera
+        placeholderText = placeholder ?? "Camera"
+        CameraController.shared.start()
     }
 
     // Load the emoji grid from the bundled dataset.

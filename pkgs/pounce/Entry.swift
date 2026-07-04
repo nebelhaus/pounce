@@ -45,6 +45,7 @@ struct Invocation {
     var clipboard = false
     var emoji = false
     var screenshots = false
+    var camera = false
     var maxEmpty: Int?
 }
 
@@ -142,6 +143,7 @@ enum DaemonMode {
             if p.count > 3 && p[3] == "clipboard" { inv.clipboard = true }
             if p.count > 3 && p[3] == "emoji" { inv.emoji = true }
             if p.count > 3 && p[3] == "screenshots" { inv.screenshots = true }
+            if p.count > 3 && p[3] == "camera" { inv.camera = true }
             if p.count > 4, let m = Int(p[4]) { inv.maxEmpty = m }
             itemLines = Array(lines.dropFirst())
         }
@@ -161,6 +163,8 @@ enum DaemonMode {
                 state.loadEmoji(placeholder: inv.placeholder)
             } else if inv.screenshots {
                 state.loadScreenshots(placeholder: inv.placeholder)
+            } else if inv.camera {
+                state.loadCamera(placeholder: inv.placeholder)
             } else {
                 state.load(lines: itemLines, placeholder: inv.placeholder, icon: inv.icon,
                            launcher: inv.launcher, maxEmpty: inv.maxEmpty)
@@ -194,6 +198,7 @@ enum ClientMode {
             case "--clipboard":         inv.clipboard = true
             case "--emoji":             inv.emoji = true
             case "--screenshots":       inv.screenshots = true
+            case "--camera":            inv.camera = true
             case "--max-empty":         if !args.isEmpty { inv.maxEmpty = Int(args.removeFirst()) }
             default: break
             }
@@ -227,7 +232,8 @@ enum ClientMode {
         let mode = inv.launcher ? "launcher"
             : (inv.clipboard ? "clipboard"
             : (inv.emoji ? "emoji"
-            : (inv.screenshots ? "screenshots" : "")))
+            : (inv.screenshots ? "screenshots"
+            : (inv.camera ? "camera" : ""))))
         let maxEmpty = inv.maxEmpty.map(String.init) ?? ""
         var payload = "CONFIG\t\(inv.placeholder ?? "")\t\(inv.icon ?? "")\t\(mode)\t\(maxEmpty)\n"
         for line in stdinLines { payload += line + "\n" }
@@ -270,6 +276,8 @@ enum ClientMode {
             state.loadEmoji(placeholder: inv.placeholder)
         } else if inv.screenshots {
             state.loadScreenshots(placeholder: inv.placeholder)
+        } else if inv.camera {
+            state.loadCamera(placeholder: inv.placeholder)
         } else {
             state.load(lines: lines, placeholder: inv.placeholder, icon: inv.icon,
                        launcher: inv.launcher, maxEmpty: inv.maxEmpty)

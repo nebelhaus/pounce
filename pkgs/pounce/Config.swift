@@ -62,6 +62,15 @@ enum ScreenshotLayout {
     static let rowHeight: CGFloat = 64
 }
 
+// Fixed geometry for the camera peek window: a 16:9 live preview with the
+// action bar underneath.
+enum CameraLayout {
+    static let width: CGFloat = 820
+    static let previewHeight: CGFloat = 461
+    static let barHeight: CGFloat = 44
+    static let height: CGFloat = previewHeight + barHeight
+}
+
 // User settings, read from ~/.config/pounce/config.json. Parsed leniently via
 // JSONSerialization so unknown/extra keys (added by future versions) never break
 // an older binary, and any missing/malformed value falls back to a default.

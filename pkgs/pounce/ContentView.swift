@@ -119,6 +119,8 @@ struct ContentView: View {
                 EmojiView(state: state)
             } else if state.displayMode == .screenshots {
                 ScreenshotsView(state: state)
+            } else if state.displayMode == .camera {
+                CameraView(state: state)
             } else {
                 launcherBody
             }

@@ -16,5 +16,7 @@
     <true/>
     <key>NSHighResolutionCapable</key>
     <true/>
+    <key>NSCameraUsageDescription</key>
+    <string>Pounce shows a live camera preview for the camera peek command.</string>
 </dict>
 </plist>

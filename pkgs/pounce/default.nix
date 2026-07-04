@@ -59,6 +59,7 @@ stdenvNoCC.mkDerivation {
       -framework SwiftUI \
       -framework AppKit \
       -framework ApplicationServices \
+      -framework AVFoundation \
       -O
 
     cp Info.plist Pounce.app/Contents/

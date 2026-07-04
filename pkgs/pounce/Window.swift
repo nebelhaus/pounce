@@ -198,6 +198,11 @@ final class PounceUI {
     // MARK: Commit handling
 
     private func handleCommit(_ commit: Commit) {
+        // Every way out of the camera peek (↵, Esc, click-away) commits through
+        // here — release the camera the moment the window goes, not at the next
+        // request's reset().
+        if state.displayMode == .camera { CameraController.shared.stop() }
+
         if let app = commit.appLaunch {
             let url = URL(fileURLWithPath: app.path)
             if app.reveal {
