@@ -1,4 +1,8 @@
 #!/bin/bash
+# pounce: name = Brew Services
+# pounce: description = Start/Stop/Restart services
+# pounce: icon = shippingbox
+# pounce: submenu = true
 
 # Brew Services Manager
 # Lists all brew services with status and allows start/stop/restart

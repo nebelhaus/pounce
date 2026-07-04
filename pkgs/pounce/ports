@@ -1,4 +1,8 @@
 #!/bin/bash
+# pounce: name = Ports
+# pounce: description = Kill Listening Ports
+# pounce: icon = network
+# pounce: submenu = true
 
 # Apps to ignore (common background processes)
 IGNORE_PATTERN="ControlCe|rapportd|Raycast|figma_age|Linear|Elgato|Cursor|Spotify|Slack|Discord|Notion|1Password|Dropbox|Google|Adobe|Microsoft|ZoomOpener|com\.apple|sharingd|AirPlay|WiFiAgent|SystemUIServer|loginwindow|UserEvent|identityservicesd|CommCenter|GEOExtension"

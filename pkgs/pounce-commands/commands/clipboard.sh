@@ -1,4 +1,8 @@
 #!/bin/bash
+# pounce: name = Clipboard History
+# pounce: description = Browse & paste recent copies
+# pounce: icon = doc.on.clipboard
+# pounce: submenu = true
 
 # Clipboard History: open the two-pane clipboard picker. Enter restores the
 # highlighted entry to the clipboard — and, when clipboard.autoPaste is enabled

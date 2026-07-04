@@ -1,159 +1,111 @@
 {
   lib,
-  stdenvNoCC,
+  runCommand,
   writeShellScriptBin,
   symlinkJoin,
   pounce,
+  # Extra command directories baked into the palette's search path (after the
+  # built-in set, before the user dir). Consumers layer their own commands on:
+  #   pounce-commands.override { extraCommandDirs = [ ./my-commands ]; }
+  extraCommandDirs ? [ ],
 }:
 
 let
-  # Command registry - add new commands here
-  commands = {
-    wifi = {
-      name = "WiFi";
-      description = "Select WiFi Network";
-      icon = "wifi";
-      script = ./commands/wifi.sh;
-      submenu = true;
-    };
-    ports = {
-      name = "Ports";
-      description = "Kill Listening Ports";
-      icon = "network";
-      script = ../pounce/ports;
-      submenu = true;
-    };
-    rebuild = {
-      name = "Rebuild System";
-      description = "Rebuild nix configuration";
-      icon = "arrow.triangle.2.circlepath";
-      script = ./commands/rebuild.sh;
-    };
-    reload-bar = {
-      name = "Reload SketchyBar";
-      description = "Reload bar configuration";
-      icon = "arrow.clockwise";
-      script = ./commands/reload-bar.sh;
-    };
-    reload-aerospace = {
-      name = "Reload AeroSpace";
-      description = "Reload AeroSpace configuration";
-      icon = "rectangle.3.group";
-      script = ./commands/reload-aerospace.sh;
-    };
-    nix-config = {
-      name = "Nix Config";
-      description = "Open in editor";
-      icon = "snowflake";
-      script = ./commands/nix-config.sh;
-    };
-    preferences = {
-      name = "System Settings";
-      description = "Open macOS Settings";
-      icon = "gear";
-      script = ./commands/preferences.sh;
-    };
-    activity = {
-      name = "Activity Monitor";
-      description = "View system processes";
-      icon = "chart.bar";
-      script = ./commands/activity.sh;
-    };
-    force-quit = {
-      name = "Force Quit";
-      description = "Force quit a running app";
-      icon = "xmark.octagon";
-      script = ./commands/force-quit.sh;
-      submenu = true;
-    };
-    screenshots = {
-      name = "Screenshots";
-      description = "Browse & copy recent screenshots";
-      icon = "photo.on.rectangle";
-      script = ./commands/screenshots.sh;
-      submenu = true;
-    };
-    clipboard = {
-      name = "Clipboard History";
-      description = "Browse & paste recent copies";
-      icon = "doc.on.clipboard";
-      script = ./commands/clipboard.sh;
-      submenu = true;
-    };
-    emoji = {
-      name = "Emoji";
-      description = "Search & copy emoji";
-      icon = "face.smiling";
-      script = ./commands/emoji.sh;
-      submenu = true;
-    };
-    lock = {
-      name = "Lock Screen";
-      description = "Lock the display";
-      icon = "lock";
-      script = ./commands/lock.sh;
-    };
-    brew-services = {
-      name = "Brew Services";
-      description = "Start/Stop/Restart services";
-      icon = "shippingbox";
-      script = ./commands/brew-services.sh;
-      submenu = true;
-    };
-  };
+  # A command is a self-describing script: metadata lives in a comment header
+  # (see commands/*.sh), not in this file. The palette discovers commands at
+  # RUNTIME from, in order (later dirs shadow earlier ones by filename):
+  #
+  #   1. the built-in set below ($out/share/pounce/commands)
+  #   2. extraCommandDirs (Nix consumers, e.g. a rice's machine-specific set)
+  #   3. $POUNCE_COMMAND_PATH (colon-separated, for ad-hoc layering)
+  #   4. ~/.config/pounce/commands (the user's own — highest precedence)
+  #
+  # So adding or overriding a command is: drop a script in a directory. No
+  # registry edit, no rebuild.
+  builtinCommands = runCommand "pounce-builtin-commands" { } ''
+    mkdir -p $out/share/pounce/commands
+    install -m555 ${./commands}/*.sh $out/share/pounce/commands/
+    # `ports` ships inside the pounce package (also installed as a standalone
+    # bin there); expose it to the palette as a regular command.
+    install -m555 ${../pounce/ports} $out/share/pounce/commands/ports.sh
+  '';
 
-  # Generate registry file content (tab-separated):
-  #   name \t description \t icon \t id \t submenu(1|0)
-  # submenu=1 marks a two-step command (it re-invokes pounce), so the daemon
-  # keeps the window up with a loading state instead of fading between steps.
-  registryContent = lib.concatStringsSep "\n" (
-    lib.mapAttrsToList (
-      id: cmd:
-      "${cmd.name}\t${cmd.description}\t${cmd.icon}\t${id}\t${if cmd.submenu or false then "1" else "0"}"
-    ) commands
-  );
+  builtinDir = "${builtinCommands}/share/pounce/commands";
 
-  # Wrap each command script with proper PATH
-  wrapCommand =
-    id: cmd:
-    writeShellScriptBin "pounce-${id}" ''
-      export PATH="${pounce}/bin:$PATH"
-      exec bash ${cmd.script} "$@"
-    '';
-
-  # All wrapped command scripts as derivations
-  commandScripts = lib.mapAttrsToList wrapCommand commands;
-
-  # Create PATH string containing all command script bin directories
-  commandPaths = lib.concatStringsSep ":" (map (drv: "${drv}/bin") commandScripts);
-
-  # The palette script: launcher mode merges these commands with installed apps.
-  # `pounce` enumerates /Applications natively and launches apps itself, so the
-  # only thing returned to this script is a selected command ("run\t<id>").
+  # The launcher. Scans the command dirs, reads each script's `# pounce:`
+  # header to build the registry (name \t description \t icon \t id \t submenu),
+  # then hands the merged list to `pounce --launcher` (which adds installed
+  # apps natively) and execs whatever command comes back.
   paletteScript = writeShellScriptBin "pounce-palette" ''
-    # Include paths to all pounce-* commands and pounce itself
-    export PATH="${commandPaths}:${pounce}/bin:$PATH"
+    export PATH="${pounce}/bin:$PATH"
 
-    # Command registry is embedded at build time (name\tdescription\ticon\tid).
-    REGISTRY='${registryContent}'
+    # id -> script path; later scans shadow earlier ones.
+    declare -A SRC
+    scan() {
+      local f id
+      for f in "$1"/*; do
+        [ -f "$f" ] || continue
+        id="''${f##*/}"
+        id="''${id%.sh}"
+        SRC[$id]="$f"
+      done
+    }
 
-    # Launcher mode: apps are added natively; empty query shows the top 7.
-    selected=$(echo "$REGISTRY" | pounce --launcher --max-empty 7 -p "Search apps & actions..." -i "magnifyingglass")
+    scan "${builtinDir}"
+    ${lib.concatMapStringsSep "\n    " (d: ''scan "${d}"'') extraCommandDirs}
+    if [ -n "''${POUNCE_COMMAND_PATH:-}" ]; then
+      IFS=: read -ra _extra <<< "$POUNCE_COMMAND_PATH"
+      for d in "''${_extra[@]}"; do scan "$d"; done
+    fi
+    scan "''${XDG_CONFIG_HOME:-$HOME/.config}/pounce/commands"
 
-    # App launches are handled inside pounce; a command selection comes back as
-    # "run\t<id>". Anything else (empty) means dismissed or an app was opened.
-    if [[ -n "$selected" ]]; then
-      cmd_id=$(echo "$selected" | cut -f2)
-      if [[ -n "$cmd_id" ]]; then
-        exec pounce-"$cmd_id"
+    # Registry lines from each script's `# pounce: key = value` header.
+    # Missing name falls back to the id, missing icon to "sparkles".
+    registry=$(
+      for id in "''${!SRC[@]}"; do printf '%s\n' "$id"; done | sort | while read -r id; do
+        awk -v id="$id" '
+          /^# pounce: name *=/        && n == "" { sub(/^# pounce: name *= */, "");        n = $0 }
+          /^# pounce: description *=/ && d == "" { sub(/^# pounce: description *= */, ""); d = $0 }
+          /^# pounce: icon *=/        && i == "" { sub(/^# pounce: icon *= */, "");        i = $0 }
+          /^# pounce: submenu *=/     && s == "" { sub(/^# pounce: submenu *= */, "");     s = $0 }
+          NR > 30 { exit }   # headers live at the top; do not read whole files
+          END {
+            if (n == "") n = id
+            if (i == "") i = "sparkles"
+            printf "%s\t%s\t%s\t%s\t%s\n", n, d, i, id, (s == "true" || s == "1") ? "1" : "0"
+          }
+        ' "''${SRC[$id]}"
+      done
+    )
+
+    # Launcher mode: apps are enumerated + launched natively inside pounce; the
+    # only thing that comes back here is a selected command ("run\t<id>").
+    selected=$(printf '%s\n' "$registry" | pounce --launcher --max-empty 7 \
+      -p "Search apps & actions..." -i "magnifyingglass")
+
+    if [ -n "$selected" ]; then
+      cmd_id=$(printf '%s' "$selected" | cut -f2)
+      script="''${SRC[$cmd_id]:-}"
+      if [ -n "$script" ]; then
+        if [ -x "$script" ]; then exec "$script"; else exec bash "$script"; fi
       fi
     fi
   '';
 
+  # Back-compat / hotkey targets: a `pounce-<id>` bin per built-in command, so
+  # existing bindings (e.g. a clipboard-history hotkey) keep working.
+  builtinIds = map (n: lib.removeSuffix ".sh" n) (builtins.attrNames (builtins.readDir ./commands))
+    ++ [ "ports" ];
+  wrapCommand = id: writeShellScriptBin "pounce-${id}" ''
+    export PATH="${pounce}/bin:$PATH"
+    exec ${builtinDir}/${id}.sh "$@"
+  '';
+  commandBins = map wrapCommand builtinIds;
+
 in
 symlinkJoin {
   name = "pounce-commands";
-  paths = commandScripts ++ [ paletteScript ];
+  paths = [ builtinCommands paletteScript ] ++ commandBins;
 
   meta = {
     description = "Command palette and pounce-based utilities";

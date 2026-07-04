@@ -1,4 +1,7 @@
 #!/bin/bash
+# pounce: name = Rebuild System
+# pounce: description = Rebuild nix configuration
+# pounce: icon = arrow.triangle.2.circlepath
 # Rebuild nix system configuration in a small centered ghostty window.
 #
 # Key constraints driving this script's shape:

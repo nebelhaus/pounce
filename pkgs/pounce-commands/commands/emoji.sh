@@ -1,4 +1,8 @@
 #!/bin/bash
+# pounce: name = Emoji
+# pounce: description = Search & copy emoji
+# pounce: icon = face.smiling
+# pounce: submenu = true
 
 # Emoji Picker: open the emoji grid with fuzzy name/keyword search. Enter copies
 # the highlighted emoji to the clipboard and records frecency so frequently used

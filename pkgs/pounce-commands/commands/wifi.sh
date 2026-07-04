@@ -1,4 +1,8 @@
 #!/bin/bash
+# pounce: name = WiFi
+# pounce: description = Select WiFi Network
+# pounce: icon = wifi
+# pounce: submenu = true
 
 # WiFi network picker using pounce
 # Shows saved networks and allows connecting to them
@@ -32,59 +36,6 @@ is_wifi_on() {
 get_saved_password() {
     local ssid="$1"
     security find-generic-password -D "AirPort network password" -a "$ssid" -gw 2>/dev/null
-}
-
-# Build JSON array of networks
-build_network_json() {
-    local current="$1"
-    local first=true
-    
-    echo "["
-    
-    # Add disconnect option if connected
-    if [[ -n "$current" ]]; then
-        echo '  {"id":"disconnect","name":"Disconnect","subtitle":"Currently: '"$current"'","icon":"wifi.slash"}'
-        first=false
-    fi
-    
-    # Add saved networks
-    networksetup -listpreferredwirelessnetworks "$INTERFACE" 2>/dev/null | tail -n +2 | while read -r ssid; do
-        ssid="${ssid#"${ssid%%[![:space:]]*}"}"
-        ssid="${ssid%"${ssid##*[![:space:]]}"}"
-        [[ -z "$ssid" ]] && continue
-        
-        # Determine icon and subtitle
-        local icon="wifi"
-        local subtitle="Saved"
-        if [[ "$ssid" =~ (iPhone|iPad|Android|Pixel|Galaxy|Phone|Hotspot|Mobile) ]]; then
-            icon="antenna.radiowaves.left.and.right"
-            subtitle="Hotspot"
-        fi
-        
-        # Mark current network
-        if [[ "$ssid" == "$current" ]]; then
-            subtitle="✓ Connected"
-        fi
-        
-        if [[ "$first" == "false" ]]; then
-            echo ","
-        fi
-        first=false
-        
-        # Escape quotes in SSID for JSON
-        local escaped_ssid="${ssid//\"/\\\"}"
-        printf '  {"id":"connect","name":"%s","subtitle":"%s","icon":"%s"}' "$escaped_ssid" "$subtitle" "$icon"
-    done
-    
-    # Add system settings option
-    echo ','
-    echo '  {"id":"settings","name":"System WiFi Settings","subtitle":"Scan for new networks","icon":"gear"}'
-    echo "]"
-}
-
-# Convert JSON to pounce format (name\tsubtitle\ticon)
-json_to_pounce() {
-    jq -r '.[] | "\(.name)\t\(.subtitle)\t\(.icon)"'
 }
 
 # Check WiFi status

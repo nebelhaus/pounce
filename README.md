@@ -23,8 +23,9 @@ a plugin SDK.
 
 ## why not Raycast / Alfred / Spotlight?
 
-- **Every command is a file.** A command is a shell script + one line in a
-  registry. No plugin API, no extension store, no account.
+- **Every command is a file.** A command is one self-describing shell script —
+  drop it in a folder and it's in the palette. No plugin API, no extension
+  store, no account.
 - **Native, tiny, no Electron.** A single Swift `LSUIElement` binary. It draws,
   picks, and gets out of the way.
 - **Scriptable end to end.** Submenus are just a script that re-invokes `pounce`
@@ -102,33 +103,47 @@ Common flags:
 | `--max-empty <n>` | how many rows to show before the user types |
 | `--request-accessibility` / `--check-accessibility` | manage the TCC grant |
 
-## writing a command
+## writing a command (plugin)
 
-A command is **a shell script + one registry entry**. That's the whole API.
+A command is **one self-describing shell script**. That's the whole API. The
+metadata lives in a `# pounce:` comment header, and the palette discovers
+commands at runtime — no registry, no rebuild, no restart.
 
-1. Drop a script in `commands/`:
+```sh
+#!/bin/bash
+# pounce: name = Say Hello
+# pounce: description = A friendly notification
+# pounce: icon = hand.wave
+osascript -e 'display notification "🐾" with title "Pounce"'
+```
 
-   ```sh
-   # commands/hello.sh
-   osascript -e 'display notification "🐾" with title "Pounce"'
-   ```
+Drop that in `~/.config/pounce/commands/hello.sh` and it's in the palette on
+the next open.
 
-2. Register it (id → name / description / SF Symbol icon / script):
+Header keys (all optional — the filename is the fallback name/id):
 
-   ```nix
-   hello = {
-     name = "Say Hello";
-     description = "A friendly notification";
-     icon = "hand.wave";
-     script = ./commands/hello.sh;
-   };
-   ```
+| key | meaning |
+|-----|---------|
+| `name` | title shown in the palette |
+| `description` | subtitle |
+| `icon` | an SF Symbol name |
+| `submenu` | `true` if the script re-invokes `pounce` (see below) |
 
-3. Rebuild. It now shows up in the palette.
+### where commands come from
+
+The palette merges commands from these locations, in order — on a filename
+clash the **later one wins**, so you can shadow any built-in by reusing its
+filename:
+
+1. the built-in set shipped with `pounce-commands` (the "official plugins")
+2. directories baked in by Nix consumers:
+   `pounce-commands.override { extraCommandDirs = [ ./my-commands ]; }`
+3. `$POUNCE_COMMAND_PATH` (colon-separated directories)
+4. `~/.config/pounce/commands` — yours, highest precedence
 
 ### submenus (two-step commands)
 
-Set `submenu = true` and have your script feed a new list back into `pounce`.
+Set `# pounce: submenu = true` and have your script feed a new list back into `pounce`.
 The daemon keeps the window up with a loading state instead of fading between
 steps, so it feels like one continuous flow:
 

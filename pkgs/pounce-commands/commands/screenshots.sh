@@ -1,4 +1,8 @@
 #!/bin/bash
+# pounce: name = Screenshots
+# pounce: description = Browse & copy recent screenshots
+# pounce: icon = photo.on.rectangle
+# pounce: submenu = true
 
 # Recent Screenshots: open the two-pane screenshot picker (same layout as the
 # clipboard history). Enter copies the highlighted shot to the clipboard as both

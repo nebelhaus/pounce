@@ -1,4 +1,7 @@
 #!/bin/bash
+# pounce: name = Nix Config
+# pounce: description = Open in editor
+# pounce: icon = snowflake
 # Open nix config directory in preferred editor
 
 NIX_CONFIG_DIR="$HOME/.config/nix"
