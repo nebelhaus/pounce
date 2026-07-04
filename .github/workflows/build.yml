@@ -1,0 +1,21 @@
+name: build
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  build:
+    name: nix build (aarch64-darwin)
+    # The build shells out to /usr/bin/xcrun swiftc, so it needs a real Mac
+    # with Xcode CLT — macos-14+ runners are Apple Silicon and ship Xcode.
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v4
+      # Determinate's installer relaxes the macOS build sandbox by default,
+      # which the impure xcrun build requires.
+      - uses: DeterminateSystems/nix-installer-action@main
+        with:
+          determinate: true
+      - run: nix build .#pounce .#pounce-commands --print-build-logs

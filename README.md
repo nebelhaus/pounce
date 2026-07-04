@@ -37,12 +37,6 @@ extensions, use Raycast. If you want to *own* your launcher, pounce.
 
 ## install
 
-### Homebrew
-
-```sh
-brew install nebelhaus/tap/pounce
-```
-
 ### Nix flake
 
 ```nix
@@ -59,6 +53,11 @@ Or try it without installing:
 ```sh
 nix run github:nebelhaus/pounce -- --help
 ```
+
+### Homebrew
+
+A `nebelhaus/tap` is planned but not published yet — for now, Nix (above) or
+[build from source](#building-from-source).
 
 ### Requirements
 
@@ -186,6 +185,10 @@ stock Catppuccin Mocha.
 ```sh
 nix build            # -> ./result/Applications/Pounce.app + ./result/bin/pounce
 ```
+
+Hacking on pounce as part of the wider rice? The
+[workshop](https://github.com/nebelhaus/workshop)'s `haus try` rebuilds a whole
+nebelhaus machine against your local checkout, uncommitted edits included.
 
 ## license
 
