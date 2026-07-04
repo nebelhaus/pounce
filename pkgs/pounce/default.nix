@@ -52,9 +52,10 @@ stdenvNoCC.mkDerivation {
     # The nebelung palette, rendered from the flake input (see the let-block).
     cp ${nebelungSwiftFile} Palette+nebelung.generated.swift
 
-    # Use xcrun to invoke the system's Swift compiler
+    # Use xcrun to invoke the system's Swift compiler. All sources compile as a
+    # single module, so the file split needs no headers or access-level changes.
     /usr/bin/xcrun swiftc -parse-as-library -o Pounce.app/Contents/MacOS/pounce \
-      main.swift Palette+nebelung.generated.swift \
+      *.swift \
       -framework SwiftUI \
       -framework AppKit \
       -framework ApplicationServices \
