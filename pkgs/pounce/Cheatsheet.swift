@@ -18,7 +18,8 @@ struct CheatsheetGroup: Codable, Identifiable {
 
 enum CheatsheetStore {
     static func load(path: String) -> [CheatsheetGroup] {
-        guard let data = try? Data(contentsOf: URL(fileURLWithPath: path)),
+        let expandedPath = (path as NSString).expandingTildeInPath
+        guard let data = try? Data(contentsOf: URL(fileURLWithPath: expandedPath)),
               let groups = try? JSONDecoder().decode([CheatsheetGroup].self, from: data) else {
             return []
         }
@@ -84,7 +85,7 @@ struct CheatsheetView: View {
             .frame(height: CheatsheetLayout.height - 64)
         }
         .frame(width: CheatsheetLayout.width)
-        .frame(maxHeight: .infinity)
+        .fixedSize(horizontal: false, vertical: true)
         .background(Theme.base.opacity(0.65))
         .clipShape(RoundedRectangle(cornerRadius: 16))
         .onAppear {
