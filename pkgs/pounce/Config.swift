@@ -71,6 +71,12 @@ enum CameraLayout {
     static let height: CGFloat = previewHeight + barHeight
 }
 
+// Fixed geometry for the cheatsheet overlay.
+enum CheatsheetLayout {
+    static let width: CGFloat = 1000
+    static let height: CGFloat = 700
+}
+
 // User settings, read from ~/.config/pounce/config.json. Parsed leniently via
 // JSONSerialization so unknown/extra keys (added by future versions) never break
 // an older binary, and any missing/malformed value falls back to a default.

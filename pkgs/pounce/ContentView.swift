@@ -121,6 +121,8 @@ struct ContentView: View {
                 ScreenshotsView(state: state)
             } else if state.displayMode == .camera {
                 CameraView(state: state)
+            } else if state.displayMode == .cheatsheet {
+                CheatsheetView(state: state)
             } else {
                 launcherBody
             }

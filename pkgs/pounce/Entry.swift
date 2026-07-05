@@ -49,6 +49,8 @@ struct Invocation {
     var emoji = false
     var screenshots = false
     var camera = false
+    var cheatsheet = false
+    var cheatsheetPath: String?
     var maxEmpty: Int?
 }
 
@@ -147,7 +149,9 @@ enum DaemonMode {
             if p.count > 3 && p[3] == "emoji" { inv.emoji = true }
             if p.count > 3 && p[3] == "screenshots" { inv.screenshots = true }
             if p.count > 3 && p[3] == "camera" { inv.camera = true }
+            if p.count > 3 && p[3] == "cheatsheet" { inv.cheatsheet = true }
             if p.count > 4, let m = Int(p[4]) { inv.maxEmpty = m }
+            if p.count > 5 && !p[5].isEmpty { inv.cheatsheetPath = p[5] }
             itemLines = Array(lines.dropFirst())
         }
 
@@ -168,6 +172,8 @@ enum DaemonMode {
                 state.loadScreenshots(placeholder: inv.placeholder)
             } else if inv.camera {
                 state.loadCamera(placeholder: inv.placeholder)
+            } else if inv.cheatsheet {
+                state.loadCheatsheet(path: inv.cheatsheetPath ?? "", placeholder: inv.placeholder)
             } else {
                 state.load(lines: itemLines, placeholder: inv.placeholder, icon: inv.icon,
                            launcher: inv.launcher, maxEmpty: inv.maxEmpty)
@@ -202,6 +208,9 @@ enum ClientMode {
             case "--emoji":             inv.emoji = true
             case "--screenshots":       inv.screenshots = true
             case "--camera":            inv.camera = true
+            case "--cheatsheet":
+                inv.cheatsheet = true
+                if !args.isEmpty { inv.cheatsheetPath = args.removeFirst() }
             case "--max-empty":         if !args.isEmpty { inv.maxEmpty = Int(args.removeFirst()) }
             default: break
             }
@@ -236,9 +245,10 @@ enum ClientMode {
             : (inv.clipboard ? "clipboard"
             : (inv.emoji ? "emoji"
             : (inv.screenshots ? "screenshots"
-            : (inv.camera ? "camera" : ""))))
+            : (inv.camera ? "camera"
+            : (inv.cheatsheet ? "cheatsheet" : "")))))
         let maxEmpty = inv.maxEmpty.map(String.init) ?? ""
-        var payload = "CONFIG\t\(inv.placeholder ?? "")\t\(inv.icon ?? "")\t\(mode)\t\(maxEmpty)\n"
+        var payload = "CONFIG\t\(inv.placeholder ?? "")\t\(inv.icon ?? "")\t\(mode)\t\(maxEmpty)\t\(inv.cheatsheetPath ?? "")\n"
         for line in stdinLines { payload += line + "\n" }
 
         if let data = payload.data(using: .utf8) {
@@ -281,6 +291,8 @@ enum ClientMode {
             state.loadScreenshots(placeholder: inv.placeholder)
         } else if inv.camera {
             state.loadCamera(placeholder: inv.placeholder)
+        } else if inv.cheatsheet {
+            state.loadCheatsheet(path: inv.cheatsheetPath ?? "", placeholder: inv.placeholder)
         } else {
             state.load(lines: lines, placeholder: inv.placeholder, icon: inv.icon,
                        launcher: inv.launcher, maxEmpty: inv.maxEmpty)

@@ -21,7 +21,7 @@ struct Commit {
 
 // MARK: - State
 
-enum DisplayMode { case list, clipboard, emoji, screenshots, camera }
+enum DisplayMode { case list, clipboard, emoji, screenshots, camera, cheatsheet }
 
 final class DaemonState: ObservableObject {
     @Published var items: [PounceItem] = []
@@ -35,6 +35,7 @@ final class DaemonState: ObservableObject {
     @Published var clipEntries: [ClipEntry] = []
     @Published var emojiEntries: [EmojiEntry] = []
     @Published var screenshotEntries: [ScreenshotEntry] = []
+    @Published var cheatsheetGroups: [CheatsheetGroup] = []
     @Published var isLoading = false   // skeleton shown between a two-step command's steps
     @Published var loadingTitle = ""   // selected command's name, shown in the static header
     @Published var loadingIcon = "magnifyingglass"
@@ -54,6 +55,7 @@ final class DaemonState: ObservableObject {
         case .emoji: return EmojiLayout.width
         case .screenshots: return ScreenshotLayout.width
         case .camera: return CameraLayout.width
+        case .cheatsheet: return CheatsheetLayout.width
         case .list: return metrics.width
         }
     }
@@ -82,6 +84,7 @@ final class DaemonState: ObservableObject {
         clipEntries = []
         emojiEntries = []
         screenshotEntries = []
+        cheatsheetGroups = []
         isLoading = false
         query = ""
     }
@@ -128,6 +131,13 @@ final class DaemonState: ObservableObject {
         displayMode = .camera
         placeholderText = placeholder ?? "Camera"
         CameraController.shared.start()
+    }
+
+    // Load the cheatsheet overlay from JSON.
+    func loadCheatsheet(path: String, placeholder: String?) {
+        displayMode = .cheatsheet
+        placeholderText = placeholder ?? "Cheatsheet"
+        cheatsheetGroups = CheatsheetStore.load(path: path)
     }
 
     // Load the emoji grid from the bundled dataset.
