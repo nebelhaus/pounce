@@ -8,7 +8,10 @@ import ApplicationServices
 enum Main {
     static func main() {
         let args = CommandLine.arguments
-        if let i = args.firstIndex(of: "--copy-file"), i + 1 < args.count {
+        if args.contains("--version") {
+            // pounceVersion comes from Version.generated.swift (see build.sh).
+            print("pounce \(pounceVersion)")
+        } else if let i = args.firstIndex(of: "--copy-file"), i + 1 < args.count {
             CopyFileMode.run(path: args[i + 1])
         } else if args.contains("--check-accessibility") {
             // Silent trust check for scripted verification. AXIsProcessTrusted

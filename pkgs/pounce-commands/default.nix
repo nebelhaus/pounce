@@ -32,64 +32,15 @@ let
 
   builtinDir = "${builtinCommands}/share/pounce/commands";
 
-  # The launcher. Scans the command dirs, reads each script's `# pounce:`
-  # header to build the registry (name \t description \t icon \t id \t submenu),
-  # then hands the merged list to `pounce --launcher` (which adds installed
-  # apps natively) and execs whatever command comes back.
+  # The launcher. The actual logic lives in ./pounce-palette — a plain,
+  # portable script shared with the Homebrew packaging — so this is just a
+  # wrapper that pins the Nix-specific environment (see the env-var contract
+  # documented at the top of that script).
   paletteScript = writeShellScriptBin "pounce-palette" ''
     export PATH="${pounce}/bin:$PATH"
-
-    # id -> script path; later scans shadow earlier ones.
-    declare -A SRC
-    scan() {
-      local f id
-      for f in "$1"/*; do
-        [ -f "$f" ] || continue
-        id="''${f##*/}"
-        id="''${id%.sh}"
-        SRC[$id]="$f"
-      done
-    }
-
-    scan "${builtinDir}"
-    ${lib.concatMapStringsSep "\n    " (d: ''scan "${d}"'') extraCommandDirs}
-    if [ -n "''${POUNCE_COMMAND_PATH:-}" ]; then
-      IFS=: read -ra _extra <<< "$POUNCE_COMMAND_PATH"
-      for d in "''${_extra[@]}"; do scan "$d"; done
-    fi
-    scan "''${XDG_CONFIG_HOME:-$HOME/.config}/pounce/commands"
-
-    # Registry lines from each script's `# pounce: key = value` header.
-    # Missing name falls back to the id, missing icon to "sparkles".
-    registry=$(
-      for id in "''${!SRC[@]}"; do printf '%s\n' "$id"; done | sort | while read -r id; do
-        awk -v id="$id" '
-          /^# pounce: name *=/        && n == "" { sub(/^# pounce: name *= */, "");        n = $0 }
-          /^# pounce: description *=/ && d == "" { sub(/^# pounce: description *= */, ""); d = $0 }
-          /^# pounce: icon *=/        && i == "" { sub(/^# pounce: icon *= */, "");        i = $0 }
-          /^# pounce: submenu *=/     && s == "" { sub(/^# pounce: submenu *= */, "");     s = $0 }
-          NR > 30 { exit }   # headers live at the top; do not read whole files
-          END {
-            if (n == "") n = id
-            if (i == "") i = "sparkles"
-            printf "%s\t%s\t%s\t%s\t%s\n", n, d, i, id, (s == "true" || s == "1") ? "1" : "0"
-          }
-        ' "''${SRC[$id]}"
-      done
-    )
-
-    # Launcher mode: apps are enumerated + launched natively inside pounce; the
-    # only thing that comes back here is a selected command ("run\t<id>").
-    selected=$(printf '%s\n' "$registry" | pounce --launcher --max-empty 7 \
-      -p "Search apps & actions..." -i "magnifyingglass")
-
-    if [ -n "$selected" ]; then
-      cmd_id=$(printf '%s' "$selected" | cut -f2)
-      script="''${SRC[$cmd_id]:-}"
-      if [ -n "$script" ]; then
-        if [ -x "$script" ]; then exec "$script"; else exec bash "$script"; fi
-      fi
-    fi
+    export POUNCE_BUILTIN_DIR="${builtinDir}"
+    export POUNCE_EXTRA_COMMAND_DIRS="${lib.concatStringsSep ":" (map toString extraCommandDirs)}"
+    exec ${./pounce-palette} "$@"
   '';
 
   # Back-compat / hotkey targets: a `pounce-<id>` bin per built-in command, so

@@ -1,3 +1,8 @@
 result
 result-*
 .DS_Store
+
+# build.sh outputs (nix builds in its sandbox; these appear on manual builds)
+*.generated.swift
+pkgs/pounce/Pounce.app/
+dist/

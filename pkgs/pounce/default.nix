@@ -47,26 +47,12 @@ stdenvNoCC.mkDerivation {
   nativeBuildInputs = [ darwin.cctools ];
 
   buildPhase = ''
-    mkdir -p Pounce.app/Contents/MacOS
-
     # The nebelung palette, rendered from the flake input (see the let-block).
     cp ${nebelungSwiftFile} Palette+nebelung.generated.swift
 
-    # Use xcrun to invoke the system's Swift compiler. All sources compile as a
-    # single module, so the file split needs no headers or access-level changes.
-    /usr/bin/xcrun swiftc -parse-as-library -o Pounce.app/Contents/MacOS/pounce \
-      *.swift \
-      -framework SwiftUI \
-      -framework AppKit \
-      -framework ApplicationServices \
-      -framework AVFoundation \
-      -O
-
-    cp Info.plist Pounce.app/Contents/
-
-    # Bundle the emoji dataset (read at runtime via Bundle.main).
-    mkdir -p Pounce.app/Contents/Resources
-    cp emoji.json Pounce.app/Contents/Resources/
+    # Compile + assemble via the shared build script (also used by the Homebrew
+    # formula in nebelhaus/homebrew-tap) so the two packagings never drift.
+    POUNCE_VERSION="$version" bash ./build.sh
   '';
 
   installPhase = ''
@@ -78,6 +64,12 @@ stdenvNoCC.mkDerivation {
     cp ports $out/bin/ports
     chmod +x $out/bin/ports
   '';
+
+  # The rendered palette Swift, for packagers that build without Nix: the
+  # release workflow bakes it into the source tarball via
+  #   nix eval --raw .#packages.<sys>.pounce.paletteSwift
+  # so a Homebrew build gets the exact palette this flake.lock pins.
+  passthru.paletteSwift = nebelungSwift;
 
   meta = {
     description = "A minimal dmenu-like picker for macOS";

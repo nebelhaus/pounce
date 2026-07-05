@@ -1,0 +1,89 @@
+#!/bin/bash
+# pounce-palette — THE palette launcher, for every packaging of pounce.
+#
+# Scans the command dirs, reads each script's `# pounce: key = value` header to
+# build the registry (name \t description \t icon \t id \t submenu), hands the
+# merged list to `pounce --launcher` (which adds installed apps natively), and
+# execs whatever command comes back.
+#
+# Packagers wrap this script with environment, they don't edit it:
+#
+#   POUNCE_BUILTIN_DIR          the built-in command set
+#                               (default: <this script's dir>/../share/pounce/commands,
+#                                which is the Homebrew keg layout)
+#   POUNCE_EXTRA_COMMAND_DIRS   colon-separated dirs a packager layers on
+#                               (how Nix consumers' extraCommandDirs arrive)
+#   POUNCE_COMMAND_PATH         colon-separated dirs for ad-hoc user layering
+#
+# Discovery order (later shadows earlier, by filename):
+#   builtin -> POUNCE_EXTRA_COMMAND_DIRS -> POUNCE_COMMAND_PATH -> ~/.config/pounce/commands
+#
+# Kept bash-3.2 compatible (macOS /bin/bash): the id -> script map is a tmpdir
+# of symlinks rather than an associative array.
+set -u
+
+HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PATH="$HERE:$PATH"   # the pounce binary is installed alongside this script
+
+MAP="$(mktemp -d "${TMPDIR:-/tmp}/pounce-palette.XXXXXX")"
+trap 'rm -rf "$MAP"' EXIT
+
+scan() { # scan <dir> — later calls shadow earlier ones by filename
+  local dir f id
+  [ -d "$1" ] || return 0
+  dir="$(cd "$1" && pwd)"   # absolute, so the map's symlinks survive exec
+  for f in "$dir"/*; do
+    [ -f "$f" ] || continue
+    id="${f##*/}"
+    id="${id%.sh}"
+    ln -sf "$f" "$MAP/$id"
+  done
+}
+
+scan "${POUNCE_BUILTIN_DIR:-$HERE/../share/pounce/commands}"
+if [ -n "${POUNCE_EXTRA_COMMAND_DIRS:-}" ]; then
+  IFS=: read -ra _dirs <<<"$POUNCE_EXTRA_COMMAND_DIRS"
+  for d in "${_dirs[@]}"; do scan "$d"; done
+fi
+if [ -n "${POUNCE_COMMAND_PATH:-}" ]; then
+  IFS=: read -ra _dirs <<<"$POUNCE_COMMAND_PATH"
+  for d in "${_dirs[@]}"; do scan "$d"; done
+fi
+scan "${XDG_CONFIG_HOME:-$HOME/.config}/pounce/commands"
+
+# Registry lines from each script's `# pounce: key = value` header.
+# Missing name falls back to the id, missing icon to "sparkles".
+# (The glob is sorted by bash, so the registry is stable.)
+registry=$(
+  for entry in "$MAP"/*; do
+    [ -e "$entry" ] || continue
+    id="${entry##*/}"
+    awk -v id="$id" '
+      /^# pounce: name *=/        && n == "" { sub(/^# pounce: name *= */, "");        n = $0 }
+      /^# pounce: description *=/ && d == "" { sub(/^# pounce: description *= */, ""); d = $0 }
+      /^# pounce: icon *=/        && i == "" { sub(/^# pounce: icon *= */, "");        i = $0 }
+      /^# pounce: submenu *=/     && s == "" { sub(/^# pounce: submenu *= */, "");     s = $0 }
+      NR > 30 { exit }   # headers live at the top; do not read whole files
+      END {
+        if (n == "") n = id
+        if (i == "") i = "sparkles"
+        printf "%s\t%s\t%s\t%s\t%s\n", n, d, i, id, (s == "true" || s == "1") ? "1" : "0"
+      }
+    ' "$entry"
+  done
+)
+
+# Launcher mode: apps are enumerated + launched natively inside pounce; the
+# only thing that comes back here is a selected command ("run\t<id>").
+selected=$(printf '%s\n' "$registry" | pounce --launcher --max-empty 7 \
+  -p "Search apps & actions..." -i "magnifyingglass")
+
+if [ -n "$selected" ]; then
+  cmd_id=$(printf '%s' "$selected" | cut -f2)
+  if [ -e "$MAP/$cmd_id" ]; then
+    script="$(readlink "$MAP/$cmd_id")"
+    # exec replaces this shell, so the EXIT trap won't fire — clean up first.
+    rm -rf "$MAP"; trap - EXIT
+    if [ -x "$script" ]; then exec "$script"; else exec bash "$script"; fi
+  fi
+fi

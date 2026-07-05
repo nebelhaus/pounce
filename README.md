@@ -56,8 +56,21 @@ nix run github:nebelhaus/pounce -- --help
 
 ### Homebrew
 
-A `nebelhaus/tap` is planned but not published yet — for now, Nix (above) or
-[build from source](#building-from-source).
+```sh
+brew tap nebelhaus/tap
+brew install pounce
+brew services start pounce       # run the palette daemon
+pounce --request-accessibility   # approve the prompt (see below)
+```
+
+The formula builds from source on install — a single `swiftc` invocation
+against the system frameworks, so it only needs the Xcode Command Line Tools
+Homebrew already requires. Then bind a hotkey to `pounce-palette` in whatever
+you use for hotkeys (skhd, AeroSpace's `exec-and-forget`, …).
+
+> After a `brew upgrade pounce`, re-run `pounce --request-accessibility`: the
+> binary is ad-hoc signed, so its code identity changes with every rebuild
+> (same story as skhd/yabai).
 
 ### Requirements
 

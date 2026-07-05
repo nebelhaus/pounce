@@ -1,0 +1,84 @@
+name: release
+
+# Tag vX.Y.Z -> GitHub release with a source tarball -> Homebrew tap bump.
+#
+# The tarball is the repo at the tag PLUS Palette+nebelung.generated.swift
+# rendered from the PINNED nebelung input, so a Homebrew build gets the exact
+# palette this flake.lock pins — no drift from the Nix world.
+#
+# Cut tags with `haus release pounce` from the workshop; it enforces that the
+# tag matches pkgs/pounce's version and that everything is pushed.
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    name: build + publish release
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v4
+      - uses: DeterminateSystems/nix-installer-action@main
+        with:
+          determinate: true
+
+      - name: Check the tag matches pkgs/pounce's version
+        run: |
+          VERSION="$(nix eval --raw .#packages.aarch64-darwin.pounce.version)"
+          if [ "v$VERSION" != "$GITHUB_REF_NAME" ]; then
+            echo "tag $GITHUB_REF_NAME != pkgs/pounce version $VERSION — bump default.nix or retag" >&2
+            exit 1
+          fi
+
+      - name: Smoke build (same as CI)
+        run: nix build .#pounce .#pounce-commands --print-build-logs
+
+      - name: Assemble source tarball (repo + pre-rendered nebelung palette)
+        run: |
+          STAGE="$RUNNER_TEMP/pounce-$GITHUB_REF_NAME"
+          mkdir -p "$STAGE" dist
+          git archive HEAD | tar -x -C "$STAGE"
+          nix eval --raw .#packages.aarch64-darwin.pounce.paletteSwift \
+            > "$STAGE/pkgs/pounce/Palette+nebelung.generated.swift"
+          tar -czf "dist/pounce-src-$GITHUB_REF_NAME.tar.gz" \
+            -C "$RUNNER_TEMP" "pounce-$GITHUB_REF_NAME"
+
+      - name: Create GitHub release
+        run: gh release create "$GITHUB_REF_NAME" dist/* --generate-notes
+        env:
+          GH_TOKEN: ${{ github.token }}
+
+  bump-tap:
+    name: bump nebelhaus/homebrew-tap
+    needs: release
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          repository: nebelhaus/homebrew-tap
+          # Write deploy key for the tap repo, stored as a secret here. The
+          # formula's version/sha lines are CI-owned; humans never bump them.
+          ssh-key: ${{ secrets.TAP_DEPLOY_KEY }}
+
+      - name: Point Formula/pounce.rb at the new release
+        run: |
+          TAG="$GITHUB_REF_NAME"
+          curl -fsSL --retry 5 --retry-delay 5 -o /tmp/sdist.tar.gz \
+            "https://github.com/nebelhaus/pounce/releases/download/$TAG/pounce-src-$TAG.tar.gz"
+          SHA="$(sha256sum /tmp/sdist.tar.gz | cut -d' ' -f1)"
+          sed -i -E \
+            -e "s#releases/download/v[^/]+/pounce-src-v[^\"]+#releases/download/$TAG/pounce-src-$TAG.tar.gz#" \
+            -e "s#^  sha256 \".*\"#  sha256 \"$SHA\"#" \
+            Formula/pounce.rb
+          if git diff --quiet; then
+            echo "formula already current"
+            exit 0
+          fi
+          git config user.name "haus-release[bot]"
+          git config user.email "haus-release@users.noreply.github.com"
+          git commit -am "pounce ${TAG#v}"
+          git push
