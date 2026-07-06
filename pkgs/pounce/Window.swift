@@ -198,6 +198,12 @@ final class PounceUI {
     // MARK: Commit handling
 
     private func handleCommit(_ commit: Commit) {
+        // Whether WE still own focus at the moment of dismissal. Esc/↵ arrive
+        // while the window is key; a click into another app arrives via
+        // didResignKey AFTER that app took focus — there, handing focus back
+        // would undo the user's click.
+        let wasKey = window.isKeyWindow
+
         // Every way out of the camera peek (↵, Esc, click-away) commits through
         // here — release the camera the moment the window goes, not at the next
         // request's reset().
@@ -220,9 +226,19 @@ final class PounceUI {
         case .hideNow:
             state.isVisible = false
             hideNow()
-            if commit.pasteAfter { restoreFocusAndPaste() }
+            if commit.pasteAfter {
+                restoreFocusAndPaste()
+            } else if commit.appLaunch == nil {
+                refocusCaptured(wasKey: wasKey)
+            } else {
+                capturedApp = nil   // the launched app takes focus
+            }
         case .linger:
             state.isVisible = false
+            // Hand focus back right away, before the fade: if the committed
+            // command goes on to open/activate something, that later
+            // activation simply wins.
+            refocusCaptured(wasKey: wasKey)
             startLinger()
         case .loading:
             // Keep the window up (and key, so click-away still cancels) until the
@@ -238,11 +254,22 @@ final class PounceUI {
         window.orderOut(nil)
     }
 
+    // Raycast-style focus restore: on dismissal (Esc, ↵ on a copy-style
+    // action) hand focus back to the app pounce stole it from. wasKey=false
+    // means the user dismissed by clicking into another app — that app owns
+    // focus now, leave it alone.
+    private func refocusCaptured(wasKey: Bool) {
+        defer { capturedApp = nil }
+        guard wasKey, let app = capturedApp, !app.isTerminated else { return }
+        app.activate(options: [.activateIgnoringOtherApps])
+    }
+
     // Hand focus back to the app that was frontmost before pounce appeared, then
     // synthesize ⌘V once it's active. The small delay lets the activation settle
     // so the keystroke lands in the target app rather than the just-hidden window.
     private func restoreFocusAndPaste() {
-        guard let app = capturedApp else { return }
+        guard let app = capturedApp else { capturedApp = nil; return }
+        capturedApp = nil
         app.activate(options: [.activateIgnoringOtherApps])
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.12) {
             Paste.sendCommandV()
@@ -289,6 +316,7 @@ final class PounceUI {
         }, completionHandler: { [weak self] in
             self?.window.orderOut(nil)
             self?.window.alphaValue = 1
+            self?.capturedApp = nil
         })
     }
 }
