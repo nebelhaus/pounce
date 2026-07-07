@@ -1,13 +1,19 @@
 <div align="center">
 
-# 🐾 Pounce
+<!-- identity banner — peach wordmark (assets/pounce-banner-rounded.png) -->
+<img src="./assets/pounce-banner-rounded.png" alt="pounce" width="480">
 
 **summon, aim, pounce**
 
 a native, scriptable, keyboard-first command palette for macOS
 
+![part of nebelhaus](https://img.shields.io/badge/part_of-nebelhaus-f2c4e5?labelColor=202020)
+![themed by nebelung](https://img.shields.io/badge/themed_by-nebelung-c9a8f1?labelColor=202020)
+![brew](https://img.shields.io/badge/brew-nebelhaus%2Ftap-f5b58e?labelColor=202020)
+![license](https://img.shields.io/badge/license-MIT-d7d7d7?labelColor=202020)
+
 <!-- assets/demo.gif — trigger hotkey, fuzzy-type an app, then a command with a submenu -->
-![pounce](./assets/demo.gif)
+![pounce demo](./assets/demo.gif)
 
 </div>
 
