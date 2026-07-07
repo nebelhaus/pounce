@@ -32,15 +32,31 @@ enum CheatsheetStore {
 struct CheatsheetView: View {
     @ObservedObject var state: DaemonState
     @State private var eventMonitor: Any?
+    @State private var searching = false
+    @State private var query = ""
+
+    // Live filter: an item survives if the query hits its key, its action, or
+    // its group's title (so "window" keeps the whole Window Management card).
+    var filteredGroups: [CheatsheetGroup] {
+        let q = query.trimmingCharacters(in: .whitespaces).lowercased()
+        guard searching, !q.isEmpty else { return state.cheatsheetGroups }
+        return state.cheatsheetGroups.compactMap { group in
+            if group.title.lowercased().contains(q) { return group }
+            let items = group.items.filter {
+                $0.action.lowercased().contains(q) || $0.key.lowercased().contains(q)
+            }
+            return items.isEmpty ? nil : CheatsheetGroup(title: group.title, items: items)
+        }
+    }
 
     // Groups packed into columns greedily by item count — each group lands in
     // the currently-shortest column. Round-robin ignores group size and stacks
     // two long groups while a third column sits near-empty.
-    var columns: [[CheatsheetGroup]] {
-        let count = max(1, min(3, state.cheatsheetGroups.count))
+    func columns(for groups: [CheatsheetGroup]) -> [[CheatsheetGroup]] {
+        let count = max(1, min(3, groups.count))
         var cols = Array(repeating: [CheatsheetGroup](), count: count)
         var weights = Array(repeating: 0, count: count)
-        for group in state.cheatsheetGroups {
+        for group in groups {
             let i = weights.indices.min { weights[$0] < weights[$1] } ?? 0
             cols[i].append(group)
             weights[i] += group.items.count + 2   // +2 ≈ the title + card chrome
@@ -50,15 +66,29 @@ struct CheatsheetView: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            HStack {
-                Image(systemName: "keyboard")
+            HStack(spacing: 12) {
+                Image(systemName: searching ? "magnifyingglass" : "keyboard")
                     .font(.system(size: 20, weight: .medium))
                     .foregroundColor(Theme.subtext)
-                Text(state.placeholderText)
-                    .font(.system(size: 20, weight: .semibold))
-                    .foregroundColor(Theme.text)
+                if searching {
+                    // The launcher's field: takes first responder on creation,
+                    // Esc cancels via cancelOperation, ↵ dismisses via onSubmit.
+                    CustomTextField(
+                        text: $query,
+                        selectedIndex: .constant(0),
+                        itemCount: 0,
+                        placeholder: "Filter shortcuts…",
+                        fontSize: 20,
+                        state: state,
+                        onSubmit: { _ in state.cancel() }
+                    )
+                } else {
+                    Text(state.placeholderText)
+                        .font(.system(size: 20, weight: .semibold))
+                        .foregroundColor(Theme.text)
+                }
                 Spacer()
-                Text("Press any key to dismiss")
+                Text(searching ? "⎋ to dismiss" : "/ to search  ·  any key dismisses")
                     .font(.system(size: 13, weight: .medium))
                     .foregroundColor(Theme.subtext0)
                     .padding(.horizontal, 10)
@@ -73,12 +103,15 @@ struct CheatsheetView: View {
 
             if state.cheatsheetGroups.isEmpty {
                 emptyBody
+            } else if filteredGroups.isEmpty {
+                noMatchBody
             } else {
                 ScrollView {
+                    let cols = columns(for: filteredGroups)
                     HStack(alignment: .top, spacing: 24) {
-                        ForEach(columns.indices, id: \.self) { i in
+                        ForEach(cols.indices, id: \.self) { i in
                             VStack(spacing: 24) {
-                                ForEach(columns[i]) { group in
+                                ForEach(cols[i]) { group in
                                     GroupCard(group: group)
                                 }
                             }
@@ -89,17 +122,26 @@ struct CheatsheetView: View {
             }
         }
         .frame(width: CheatsheetLayout.width, height: CheatsheetLayout.height)
-        .background(Theme.base.opacity(0.55))
+        // More opaque than the launcher's 0.55: this is a dense wall of 14pt
+        // text, and whatever's behind the blur bleeds through smaller type.
+        .background(Theme.base.opacity(0.75))
         .clipShape(RoundedRectangle(cornerRadius: 16))
         .contentShape(Rectangle())
-        .onTapGesture { state.cancel() }
+        .onTapGesture { if !searching { state.cancel() } }
         .onAppear {
-            // No text field in this mode, so nothing routes keys for us — catch
-            // them app-locally while the sheet is up. Any key dismisses;
-            // returning nil swallows the event so it can't beep or leak into
-            // whatever becomes first responder next.
+            // No text field until search starts, so nothing routes keys for
+            // us — catch them app-locally while the sheet is up. "/" flips
+            // into search (the field then owns the keys); anything else
+            // dismisses. Returning nil swallows the event so it can't beep
+            // or leak into whatever becomes first responder next.
             eventMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { event in
                 guard state.displayMode == .cheatsheet, state.isVisible else { return event }
+                if searching { return event }
+                if event.charactersIgnoringModifiers == "/",
+                   event.modifierFlags.intersection([.command, .option, .control]).isEmpty {
+                    searching = true
+                    return nil
+                }
                 state.cancel()
                 return nil
             }
@@ -128,6 +170,18 @@ struct CheatsheetView: View {
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
+
+    var noMatchBody: some View {
+        VStack(spacing: 10) {
+            Image(systemName: "magnifyingglass")
+                .font(.system(size: 32, weight: .regular))
+                .foregroundColor(Theme.subtext0)
+            Text("No shortcuts match \u{201C}\(query)\u{201D}")
+                .font(.system(size: 14, weight: .medium))
+                .foregroundColor(Theme.subtext)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
 }
 
 struct GroupCard: View {
@@ -143,7 +197,7 @@ struct GroupCard: View {
             ForEach(group.items) { item in
                 HStack(alignment: .top, spacing: 12) {
                     Text(item.key)
-                        .font(.system(size: 13, weight: .bold, design: .monospaced))
+                        .font(.system(size: 14, weight: .semibold, design: .monospaced))
                         .foregroundColor(Theme.text)
                         .padding(.horizontal, 8)
                         .padding(.vertical, 4)
@@ -155,9 +209,9 @@ struct GroupCard: View {
                         )
 
                     Text(item.action)
-                        .font(.system(size: 14, weight: .medium))
-                        .foregroundColor(Theme.subtext0)
-                        .padding(.top, 2)
+                        .font(.system(size: 15, weight: .medium))
+                        .foregroundColor(Theme.text)
+                        .padding(.top, 3)
 
                     Spacer()
                 }
