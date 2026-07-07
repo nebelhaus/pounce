@@ -12,6 +12,11 @@ struct CheatsheetGroup: Codable, Identifiable {
     var id: String { title }
     let title: String
     let items: [CheatsheetItem]
+    // Optional second axis: groups sharing a page render together and ⇥
+    // cycles between pages. Absent → "Keys", so existing sheets stay
+    // single-page and no page UI appears.
+    var page: String?
+    var pageName: String { page ?? "Keys" }
 }
 
 // MARK: - Store
@@ -29,23 +34,53 @@ enum CheatsheetStore {
 
 // MARK: - View
 
+private struct ContentHeightKey: PreferenceKey {
+    static var defaultValue: CGFloat = 0
+    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
+        value = max(value, nextValue())
+    }
+}
+
 struct CheatsheetView: View {
     @ObservedObject var state: DaemonState
     @State private var eventMonitor: Any?
     @State private var searching = false
     @State private var query = ""
+    @State private var currentPage: String?
+    @State private var contentHeight: CGFloat = 0
 
-    // Live filter: an item survives if the query hits its key, its action, or
-    // its group's title (so "window" keeps the whole Window Management card).
-    var filteredGroups: [CheatsheetGroup] {
+    // Distinct pages in first-seen (input) order.
+    var pages: [String] {
+        var seen = Set<String>(), order: [String] = []
+        for g in state.cheatsheetGroups where seen.insert(g.pageName).inserted {
+            order.append(g.pageName)
+        }
+        return order
+    }
+
+    var activePage: String { currentPage ?? pages.first ?? "Keys" }
+
+    var nextPage: String? {
+        guard pages.count > 1, let i = pages.firstIndex(of: activePage) else { return nil }
+        return pages[(i + 1) % pages.count]
+    }
+
+    // What the body shows: the active page — or, while a query is live, the
+    // matches from EVERY page (search shouldn't care which page you're on).
+    // An item survives if the query hits its key, its action, or its group's
+    // title (so "window" keeps the whole Window Management card).
+    var visibleGroups: [CheatsheetGroup] {
         let q = query.trimmingCharacters(in: .whitespaces).lowercased()
-        guard searching, !q.isEmpty else { return state.cheatsheetGroups }
+        guard searching, !q.isEmpty else {
+            return state.cheatsheetGroups.filter { $0.pageName == activePage }
+        }
         return state.cheatsheetGroups.compactMap { group in
             if group.title.lowercased().contains(q) { return group }
             let items = group.items.filter {
                 $0.action.lowercased().contains(q) || $0.key.lowercased().contains(q)
             }
-            return items.isEmpty ? nil : CheatsheetGroup(title: group.title, items: items)
+            return items.isEmpty ? nil
+                : CheatsheetGroup(title: group.title, items: items, page: group.page)
         }
     }
 
@@ -62,6 +97,21 @@ struct CheatsheetView: View {
             weights[i] += group.items.count + 2   // +2 ≈ the title + card chrome
         }
         return cols
+    }
+
+    // The tallest the body may grow: the screen minus the window's top inset
+    // (mirroring positionFresh) and a bottom margin, so the sheet hugs its
+    // content and only scrolls when it would otherwise kiss the screen edge.
+    var maxBodyHeight: CGFloat {
+        let screenH = (NSScreen.main ?? NSScreen.screens.first)?.visibleFrame.height ?? 900
+        let topInset = screenH * state.metrics.topInsetFraction
+        return screenH - topInset - 48 - CheatsheetLayout.headerHeight
+    }
+
+    var hintText: String {
+        if searching { return "⎋ to dismiss" }
+        if let next = nextPage { return "⇥ \(next.lowercased())  ·  / search  ·  any key dismisses" }
+        return "/ to search  ·  any key dismisses"
     }
 
     var body: some View {
@@ -86,9 +136,24 @@ struct CheatsheetView: View {
                     Text(state.placeholderText)
                         .font(.system(size: 20, weight: .semibold))
                         .foregroundColor(Theme.text)
+                    if pages.count > 1 {
+                        HStack(spacing: 4) {
+                            ForEach(pages, id: \.self) { p in
+                                Text(p)
+                                    .font(.system(size: 12, weight: .semibold))
+                                    .foregroundColor(p == activePage ? Theme.base : Theme.subtext)
+                                    .padding(.horizontal, 10)
+                                    .padding(.vertical, 4)
+                                    .background(p == activePage ? Theme.mauve : Theme.surface1.opacity(0.5))
+                                    .clipShape(Capsule())
+                                    .onTapGesture { currentPage = p }
+                            }
+                        }
+                        .padding(.leading, 8)
+                    }
                 }
                 Spacer()
-                Text(searching ? "⎋ to dismiss" : "/ to search  ·  any key dismisses")
+                Text(hintText)
                     .font(.system(size: 13, weight: .medium))
                     .foregroundColor(Theme.subtext0)
                     .padding(.horizontal, 10)
@@ -103,11 +168,11 @@ struct CheatsheetView: View {
 
             if state.cheatsheetGroups.isEmpty {
                 emptyBody
-            } else if filteredGroups.isEmpty {
+            } else if visibleGroups.isEmpty {
                 noMatchBody
             } else {
+                let cols = columns(for: visibleGroups)
                 ScrollView {
-                    let cols = columns(for: filteredGroups)
                     HStack(alignment: .top, spacing: 24) {
                         ForEach(cols.indices, id: \.self) { i in
                             VStack(spacing: 24) {
@@ -118,10 +183,22 @@ struct CheatsheetView: View {
                         }
                     }
                     .padding(24)
+                    // Report the columns' natural height so the frame below —
+                    // and with it the window — can hug the content.
+                    .background(GeometryReader { geo in
+                        Color.clear.preference(key: ContentHeightKey.self, value: geo.size.height)
+                    })
+                }
+                .frame(height: min(max(contentHeight, 120), maxBodyHeight))
+                .onPreferenceChange(ContentHeightKey.self) { h in
+                    guard abs(h - contentHeight) > 0.5 else { return }
+                    contentHeight = h
+                    state.onResize?()
                 }
             }
         }
-        .frame(width: CheatsheetLayout.width, height: CheatsheetLayout.height)
+        .frame(width: CheatsheetLayout.width)
+        .fixedSize(horizontal: false, vertical: true)
         // More opaque than the launcher's 0.55: this is a dense wall of 14pt
         // text, and whatever's behind the blur bleeds through smaller type.
         .background(Theme.base.opacity(0.75))
@@ -131,15 +208,19 @@ struct CheatsheetView: View {
         .onAppear {
             // No text field until search starts, so nothing routes keys for
             // us — catch them app-locally while the sheet is up. "/" flips
-            // into search (the field then owns the keys); anything else
-            // dismisses. Returning nil swallows the event so it can't beep
-            // or leak into whatever becomes first responder next.
+            // into search (the field then owns the keys), ⇥ cycles pages;
+            // anything else dismisses. Returning nil swallows the event so it
+            // can't beep or leak into whatever becomes first responder next.
             eventMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { event in
                 guard state.displayMode == .cheatsheet, state.isVisible else { return event }
                 if searching { return event }
                 if event.charactersIgnoringModifiers == "/",
                    event.modifierFlags.intersection([.command, .option, .control]).isEmpty {
                     searching = true
+                    return nil
+                }
+                if event.keyCode == 48, let next = nextPage {   // tab
+                    currentPage = next
                     return nil
                 }
                 state.cancel()
@@ -168,7 +249,8 @@ struct CheatsheetView: View {
                 .font(.system(size: 12))
                 .foregroundColor(Theme.subtext0)
         }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .frame(maxWidth: .infinity)
+        .frame(height: 260)
     }
 
     var noMatchBody: some View {
@@ -180,7 +262,8 @@ struct CheatsheetView: View {
                 .font(.system(size: 14, weight: .medium))
                 .foregroundColor(Theme.subtext)
         }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .frame(maxWidth: .infinity)
+        .frame(height: 260)
     }
 }
 

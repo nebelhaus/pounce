@@ -71,10 +71,10 @@ enum CameraLayout {
     static let height: CGFloat = previewHeight + barHeight
 }
 
-// Fixed geometry for the cheatsheet overlay.
+// Fixed width for the cheatsheet overlay; height follows the content, capped
+// near the screen edge (see CheatsheetView.maxBodyHeight).
 enum CheatsheetLayout {
     static let width: CGFloat = 1000
-    static let height: CGFloat = 700
     static let headerHeight: CGFloat = 64
 }
 
