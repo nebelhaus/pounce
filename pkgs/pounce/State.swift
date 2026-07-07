@@ -36,6 +36,7 @@ final class DaemonState: ObservableObject {
     @Published var emojiEntries: [EmojiEntry] = []
     @Published var screenshotEntries: [ScreenshotEntry] = []
     @Published var cheatsheetGroups: [CheatsheetGroup] = []
+    var cheatsheetPath = ""            // set with cheatsheetGroups; read-only for the view
     @Published var isLoading = false   // skeleton shown between a two-step command's steps
     @Published var loadingTitle = ""   // selected command's name, shown in the static header
     @Published var loadingIcon = "magnifyingglass"
@@ -133,10 +134,12 @@ final class DaemonState: ObservableObject {
         CameraController.shared.start()
     }
 
-    // Load the cheatsheet overlay from JSON.
+    // Load the cheatsheet overlay from JSON. The path is kept so the view can
+    // say where it looked when the file is missing or malformed.
     func loadCheatsheet(path: String, placeholder: String?) {
         displayMode = .cheatsheet
         placeholderText = placeholder ?? "Cheatsheet"
+        cheatsheetPath = path
         cheatsheetGroups = CheatsheetStore.load(path: path)
     }
 

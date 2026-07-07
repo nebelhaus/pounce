@@ -75,6 +75,7 @@ enum CameraLayout {
 enum CheatsheetLayout {
     static let width: CGFloat = 1000
     static let height: CGFloat = 700
+    static let headerHeight: CGFloat = 64
 }
 
 // User settings, read from ~/.config/pounce/config.json. Parsed leniently via

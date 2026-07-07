@@ -18,8 +18,8 @@ struct CheatsheetGroup: Codable, Identifiable {
 
 enum CheatsheetStore {
     static func load(path: String) -> [CheatsheetGroup] {
-        let expandedPath = (path as NSString).expandingTildeInPath
-        guard let data = try? Data(contentsOf: URL(fileURLWithPath: expandedPath)),
+        let expanded = (path as NSString).expandingTildeInPath
+        guard let data = try? Data(contentsOf: URL(fileURLWithPath: expanded)),
               let groups = try? JSONDecoder().decode([CheatsheetGroup].self, from: data) else {
             return []
         }
@@ -33,17 +33,23 @@ struct CheatsheetView: View {
     @ObservedObject var state: DaemonState
     @State private var eventMonitor: Any?
 
-    // Split groups into 3 columns (masonry-style layout could be complex in pure SwiftUI without extra math,
-    // so let's just lay them out in a LazyVGrid with fixed columns).
-    let columns = [
-        GridItem(.flexible(), spacing: 24, alignment: .top),
-        GridItem(.flexible(), spacing: 24, alignment: .top),
-        GridItem(.flexible(), spacing: 24, alignment: .top)
-    ]
+    // Groups packed into columns greedily by item count — each group lands in
+    // the currently-shortest column. Round-robin ignores group size and stacks
+    // two long groups while a third column sits near-empty.
+    var columns: [[CheatsheetGroup]] {
+        let count = max(1, min(3, state.cheatsheetGroups.count))
+        var cols = Array(repeating: [CheatsheetGroup](), count: count)
+        var weights = Array(repeating: 0, count: count)
+        for group in state.cheatsheetGroups {
+            let i = weights.indices.min { weights[$0] < weights[$1] } ?? 0
+            cols[i].append(group)
+            weights[i] += group.items.count + 2   // +2 ≈ the title + card chrome
+        }
+        return cols
+    }
 
     var body: some View {
         VStack(spacing: 0) {
-            // Header
             HStack {
                 Image(systemName: "keyboard")
                     .font(.system(size: 20, weight: .medium))
@@ -61,37 +67,41 @@ struct CheatsheetView: View {
                     .clipShape(Capsule())
             }
             .padding(.horizontal, 24)
-            .frame(height: 64)
+            .frame(height: CheatsheetLayout.headerHeight)
 
             Divider().background(Theme.surface1.opacity(0.3))
 
-            // Content
-            ScrollView {
-                // Using a simple grid approach where each group fills a cell.
-                // Masonry is better achieved by pre-computing 3 columns of groups,
-                // but for now a LazyVGrid with alignment top will stack them into rows.
-                // A better masonry:
-                HStack(alignment: .top, spacing: 24) {
-                    ForEach(0..<3, id: \.self) { colIndex in
-                        VStack(spacing: 24) {
-                            ForEach(columnGroups(for: colIndex)) { group in
-                                GroupCard(group: group)
+            if state.cheatsheetGroups.isEmpty {
+                emptyBody
+            } else {
+                ScrollView {
+                    HStack(alignment: .top, spacing: 24) {
+                        ForEach(columns.indices, id: \.self) { i in
+                            VStack(spacing: 24) {
+                                ForEach(columns[i]) { group in
+                                    GroupCard(group: group)
+                                }
                             }
                         }
                     }
+                    .padding(24)
                 }
-                .padding(24)
             }
-            .frame(height: CheatsheetLayout.height - 64)
         }
-        .frame(width: CheatsheetLayout.width)
-        .fixedSize(horizontal: false, vertical: true)
-        .background(Theme.base.opacity(0.65))
+        .frame(width: CheatsheetLayout.width, height: CheatsheetLayout.height)
+        .background(Theme.base.opacity(0.55))
         .clipShape(RoundedRectangle(cornerRadius: 16))
+        .contentShape(Rectangle())
+        .onTapGesture { state.cancel() }
         .onAppear {
+            // No text field in this mode, so nothing routes keys for us — catch
+            // them app-locally while the sheet is up. Any key dismisses;
+            // returning nil swallows the event so it can't beep or leak into
+            // whatever becomes first responder next.
             eventMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { event in
+                guard state.displayMode == .cheatsheet, state.isVisible else { return event }
                 state.cancel()
-                return event
+                return nil
             }
         }
         .onDisappear {
@@ -102,13 +112,21 @@ struct CheatsheetView: View {
         }
     }
 
-    // Distribute groups across columns round-robin.
-    func columnGroups(for col: Int) -> [CheatsheetGroup] {
-        var res: [CheatsheetGroup] = []
-        for (i, g) in state.cheatsheetGroups.enumerated() {
-            if i % 3 == col { res.append(g) }
+    // A missing/unparseable file used to render as a giant blank panel — say
+    // where pounce looked instead, so a typo'd path is a ten-second fix.
+    var emptyBody: some View {
+        VStack(spacing: 10) {
+            Image(systemName: "questionmark.square.dashed")
+                .font(.system(size: 32, weight: .regular))
+                .foregroundColor(Theme.subtext0)
+            Text("No cheatsheet at \((state.cheatsheetPath as NSString).abbreviatingWithTildeInPath)")
+                .font(.system(size: 14, weight: .medium))
+                .foregroundColor(Theme.subtext)
+            Text("Expected a JSON array of { title, items: [{ key, action }] } groups.")
+                .font(.system(size: 12))
+                .foregroundColor(Theme.subtext0)
         }
-        return res
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 }
 
@@ -135,12 +153,12 @@ struct GroupCard: View {
                             RoundedRectangle(cornerRadius: 6)
                                 .stroke(Theme.surface2, lineWidth: 1)
                         )
-                    
+
                     Text(item.action)
                         .font(.system(size: 14, weight: .medium))
                         .foregroundColor(Theme.subtext0)
                         .padding(.top, 2)
-                    
+
                     Spacer()
                 }
             }

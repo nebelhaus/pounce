@@ -50,7 +50,7 @@ struct Invocation {
     var screenshots = false
     var camera = false
     var cheatsheet = false
-    var cheatsheetPath: String?
+    var cheatsheetPath = "~/.config/pounce/cheatsheet.json"
     var maxEmpty: Int?
 }
 
@@ -173,7 +173,7 @@ enum DaemonMode {
             } else if inv.camera {
                 state.loadCamera(placeholder: inv.placeholder)
             } else if inv.cheatsheet {
-                state.loadCheatsheet(path: inv.cheatsheetPath ?? "", placeholder: inv.placeholder)
+                state.loadCheatsheet(path: inv.cheatsheetPath, placeholder: inv.placeholder)
             } else {
                 state.load(lines: itemLines, placeholder: inv.placeholder, icon: inv.icon,
                            launcher: inv.launcher, maxEmpty: inv.maxEmpty)
@@ -210,7 +210,9 @@ enum ClientMode {
             case "--camera":            inv.camera = true
             case "--cheatsheet":
                 inv.cheatsheet = true
-                if !args.isEmpty { inv.cheatsheetPath = args.removeFirst() }
+                // The JSON path is optional (defaults in Invocation) — don't
+                // swallow a following flag as the path.
+                if let next = args.first, !next.hasPrefix("--") { inv.cheatsheetPath = args.removeFirst() }
             case "--max-empty":         if !args.isEmpty { inv.maxEmpty = Int(args.removeFirst()) }
             default: break
             }
@@ -248,7 +250,7 @@ enum ClientMode {
             : (inv.camera ? "camera"
             : (inv.cheatsheet ? "cheatsheet" : "")))))
         let maxEmpty = inv.maxEmpty.map(String.init) ?? ""
-        var payload = "CONFIG\t\(inv.placeholder ?? "")\t\(inv.icon ?? "")\t\(mode)\t\(maxEmpty)\t\(inv.cheatsheetPath ?? "")\n"
+        var payload = "CONFIG\t\(inv.placeholder ?? "")\t\(inv.icon ?? "")\t\(mode)\t\(maxEmpty)\t\(inv.cheatsheetPath)\n"
         for line in stdinLines { payload += line + "\n" }
 
         if let data = payload.data(using: .utf8) {
@@ -292,7 +294,7 @@ enum ClientMode {
         } else if inv.camera {
             state.loadCamera(placeholder: inv.placeholder)
         } else if inv.cheatsheet {
-            state.loadCheatsheet(path: inv.cheatsheetPath ?? "", placeholder: inv.placeholder)
+            state.loadCheatsheet(path: inv.cheatsheetPath, placeholder: inv.placeholder)
         } else {
             state.load(lines: lines, placeholder: inv.placeholder, icon: inv.icon,
                        launcher: inv.launcher, maxEmpty: inv.maxEmpty)
