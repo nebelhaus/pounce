@@ -157,12 +157,23 @@ final class DaemonState: ObservableObject {
     }
 
     // Copy the emoji to the clipboard, record frecency, and echo it to the client.
+    // Same auto-paste contract as commitClip: with clipboard.autoPaste on and the
+    // Accessibility grant held, the emoji lands straight at the cursor of the
+    // previously-focused app instead of stopping at the clipboard.
     func commitEmoji(_ e: EmojiEntry) {
         frecency.record("emoji:\(e.c)")
         let pb = NSPasteboard.general
         pb.clearContents()
         pb.setString(e.c, forType: .string)
-        onCommit?(Commit(clientString: e.c, disposition: .hideNow, appLaunch: nil))
+        var paste = false
+        if Settings.load().clipboard.autoPaste {
+            if AXIsProcessTrusted() {
+                paste = true
+            } else {
+                AccessibilityHint.promptOnce()
+            }
+        }
+        onCommit?(Commit(clientString: e.c, disposition: .hideNow, appLaunch: nil, pasteAfter: paste))
     }
 
     func load(lines: [String], placeholder: String?, icon: String?, launcher: Bool, maxEmpty: Int?) {
