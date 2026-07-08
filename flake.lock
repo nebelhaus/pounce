@@ -26,11 +26,11 @@
         ]
       },
       "locked": {
-        "lastModified": 1783531602,
-        "narHash": "sha256-6sTGn2cQOoehwSNbylGc69mNwRYLFL/BfYXDQmMILXY=",
+        "lastModified": 1783539958,
+        "narHash": "sha256-FIC4hwYdwluG/IPZuFllir4Y/RBkKn2Ui699gwAn4Mo=",
         "owner": "nebelhaus",
         "repo": "nebelung",
-        "rev": "571fd85560801df6b6a3888b20445f142a55677c",
+        "rev": "a36989621556226fca6fb794307be3837e2a24f4",
         "type": "github"
       },
       "original": {
