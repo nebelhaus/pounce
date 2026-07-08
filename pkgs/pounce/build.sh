@@ -38,6 +38,7 @@ mkdir -p Pounce.app/Contents/MacOS Pounce.app/Contents/Resources
   -framework AppKit \
   -framework ApplicationServices \
   -framework AVFoundation \
+  -framework Carbon \
   -O
 
 cp Info.plist Pounce.app/Contents/
