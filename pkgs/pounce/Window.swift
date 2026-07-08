@@ -113,6 +113,13 @@ final class PounceUI {
             }
 
             // First appear: size + position instantly (nothing to animate from).
+            // Force layout first so fittingSize reflects the content the caller
+            // JUST reset/loaded, not whatever taller view (e.g. clipboard
+            // history) was rendered last time the window was up. Without this the
+            // window opens at the stale height for one frame before the deferred
+            // resizeToFit snaps it down — the flash you see going from a big
+            // window (clipboard) back to the empty launcher bar.
+            hosting.layoutSubtreeIfNeeded()
             let size = hosting.fittingSize
             let target = NSSize(width: state.targetWidth, height: size.height)
             window.setContentSize(target)
