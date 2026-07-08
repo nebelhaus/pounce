@@ -185,6 +185,11 @@ optional and falls back to a default.
 {
   "theme": "nebelung",      // color palette: "nebelung" (default) or "mocha"
   "windowMode": "default",  // "default" or "compact"
+  "hotkey": {
+    "enabled": true,        // daemon grabs a global hotkey in-process (see below)
+    "key": "space",         // "space", "return", "a"…"z", "0"…"9"
+    "modifiers": ["cmd"]    // any of "cmd" / "shift" / "opt" / "ctrl"
+  },
   "clipboard": {
     "enabled": true,
     "maxEntries": 200,
@@ -192,6 +197,29 @@ optional and falls back to a default.
   }
 }
 ```
+
+### the hotkey (near-instant open)
+
+When the daemon is running it registers `hotkey` **in-process** (Carbon
+`RegisterEventHotKey`). The keypress lands straight in the already-warm daemon,
+so the palette opens with no shell, no client spawn, and no socket round-trip in
+the way — the low-latency path. This replaces binding ⌘Space to `pounce-palette`
+in an external hotkey daemon; if you keep such a binding, disable it (or set
+`"hotkey": { "enabled": false }` here) so the combo doesn't fire twice.
+
+For the daemon to serve commands on that path it discovers them from its **own
+environment** — the same contract `pounce-palette` uses, so the launch agent
+that starts the daemon should export them:
+
+| var | meaning |
+|---|---|
+| `POUNCE_BUILTIN_DIR` | the built-in command set |
+| `POUNCE_EXTRA_COMMAND_DIRS` | colon-separated dirs a packager layers on |
+| `POUNCE_COMMAND_PATH` | colon-separated dirs for ad-hoc layering |
+
+`~/.config/pounce/commands` is always searched last (highest precedence). If the
+hotkey can't be registered (another app owns it) the daemon logs and leaves the
+external-binder path working.
 
 The default **nebelung** palette is the desaturated Catppuccin used across the
 [nebelhaus](https://github.com/nebelhaus) rice — it's baked into the binary at

@@ -95,11 +95,22 @@ struct ClipboardSettings {
     var autoPaste: Bool = false
 }
 
+// The daemon's in-process global hotkey (see HotKeyManager). `key` is a named
+// key ("space", "return", "a"…); `modifiers` combine "cmd"/"shift"/"opt"/"ctrl".
+// Defaults to ⌘Space. Set `enabled: false` to leave the hotkey to an external
+// binder (skhd, AeroSpace, a launch agent spawning pounce-palette).
+struct HotKeyConfig {
+    var enabled: Bool = true
+    var key: String = "space"
+    var modifiers: [String] = ["cmd"]
+}
+
 struct Settings {
     enum WindowMode: String { case standard = "default", compact }
 
     var windowMode: WindowMode = .standard
     var clipboard = ClipboardSettings()
+    var hotkey = HotKeyConfig()
     // Named color palette (see Palette.named). Defaults to nebelung.
     var theme: String = "nebelung"
 
@@ -133,6 +144,11 @@ struct Settings {
             if let m = cb["maxEntries"] as? Int { s.clipboard.maxEntries = m }
             if let bl = cb["blacklistBundleIds"] as? [String] { s.clipboard.blacklistBundleIds = bl }
             if let ap = cb["autoPaste"] as? Bool { s.clipboard.autoPaste = ap }
+        }
+        if let hk = obj["hotkey"] as? [String: Any] {
+            if let e = hk["enabled"] as? Bool { s.hotkey.enabled = e }
+            if let k = hk["key"] as? String, !k.isEmpty { s.hotkey.key = k }
+            if let m = hk["modifiers"] as? [String] { s.hotkey.modifiers = m }
         }
         return s
     }

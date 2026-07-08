@@ -57,6 +57,9 @@ struct Invocation {
 // MARK: - Daemon Mode
 
 enum DaemonMode {
+    // Retained for the daemon's lifetime so its Carbon handler stays installed.
+    static var hotKey: HotKeyManager?
+
     static func run() {
         let app = NSApplication.shared
         app.setActivationPolicy(.accessory)
@@ -68,8 +71,58 @@ enum DaemonMode {
         AppScanner.shared.warm()
         EmojiStore.shared.warm()   // filter the dataset to OS-renderable glyphs off the main thread
 
+        // Warm the command registry so the first ⌘Space doesn't pay the initial
+        // scan + header parse. Kept on the main queue — refresh() is only ever
+        // touched from the main thread (here and in presentLauncher), so the
+        // registry needs no locking.
+        let registry = CommandRegistry()
+        DispatchQueue.main.async { registry.refresh() }
+
+        let settings = Settings.load()
+
+        // The in-process launcher: what ⌘Space triggers. No shell, no client, no
+        // socket — build the launcher from the cached registry + warm app list and
+        // present the already-built window straight away. Toggling: a second press
+        // while it's up dismisses it (Raycast-style).
+        let presentLauncher: () -> Void = {
+            if state.isVisible { state.cancel(); return }
+            let settings = Settings.load()   // re-read so config edits apply live
+            Theme.current = settings.palette
+            state.reset()
+            state.metrics = settings.metrics
+            registry.refresh()
+            let lines = registry.entries.map { $0.registryLine }
+            state.load(lines: lines, placeholder: "Search apps & actions...",
+                       icon: "magnifyingglass", launcher: true, maxEmpty: 7)
+            // Launcher selections that aren't native app launches arrive as
+            // "run\t<id>"; spawn that command script ourselves, the way
+            // pounce-palette used to exec it. App launches come back with an empty
+            // string (handled natively in PounceUI) and are ignored here.
+            ui.resultSink = { result in
+                guard result.hasPrefix("run\t") else { return }
+                let id = String(result.dropFirst(4))
+                if let path = registry.scriptPath(for: id) { CommandSpawner.run(scriptPath: path) }
+            }
+            ui.present()
+        }
+
+        if settings.hotkey.enabled {
+            if let keyCode = HotKeyParser.keyCode(for: settings.hotkey.key) {
+                let modifiers = HotKeyParser.modifierMask(for: settings.hotkey.modifiers)
+                let manager = HotKeyManager(onFire: presentLauncher)
+                if manager.register(keyCode: keyCode, modifiers: modifiers) {
+                    hotKey = manager
+                    NSLog("pounce daemon: hotkey \(settings.hotkey.modifiers.joined(separator: "+"))+\(settings.hotkey.key) registered")
+                } else {
+                    NSLog("pounce daemon: could not register hotkey \(settings.hotkey.modifiers.joined(separator: "+"))+\(settings.hotkey.key) (already taken?); falling back to socket launch")
+                }
+            } else {
+                NSLog("pounce daemon: unknown hotkey key '\(settings.hotkey.key)'; falling back to socket launch")
+            }
+        }
+
         // Clipboard history watcher: poll the pasteboard while the daemon lives.
-        if Settings.load().clipboard.enabled {
+        if settings.clipboard.enabled {
             Timer.scheduledTimer(withTimeInterval: 0.5, repeats: true) { _ in
                 ClipboardStore.shared.poll()
             }

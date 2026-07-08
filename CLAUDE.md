@@ -19,6 +19,12 @@ its command scripts. Nothing else.
 > **Claude: enforce this.** If a request is about launching/signing pounce, theming
 > it, or per-machine settings, STOP and point at the right repo before editing here.
 
+> **Hotkey exception.** The daemon *can* register a global hotkey in-process
+> (`HotKey.swift`, config `hotkey`) so ⌘Space→palette skips the shell/client
+> spawn — that latency-critical capability lives here. But the *system binding*
+> (the launch agent, its exported `POUNCE_*` command dirs, whether ⌘Space is left
+> to the daemon vs. an external binder) is still a nebelhaus concern.
+
 ## Build
 
 ```bash
