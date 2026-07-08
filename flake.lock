@@ -18,32 +18,19 @@
         "type": "github"
       }
     },
-    "catppuccin-userstyles-export": {
-      "flake": false,
-      "locked": {
-        "narHash": "sha256-l6UOMhd5hEenS7k7XYamC6KVLywd4dQdToYL69Shuyo=",
-        "type": "file",
-        "url": "https://github.com/catppuccin/userstyles/releases/download/all-userstyles-export/import.json"
-      },
-      "original": {
-        "type": "file",
-        "url": "https://github.com/catppuccin/userstyles/releases/download/all-userstyles-export/import.json"
-      }
-    },
     "nebelung": {
       "inputs": {
         "catppuccin": "catppuccin",
-        "catppuccin-userstyles-export": "catppuccin-userstyles-export",
         "nixpkgs": [
           "nixpkgs"
         ]
       },
       "locked": {
-        "lastModified": 1783507969,
-        "narHash": "sha256-fbAwhfjWhHpOJvUFFGUc6x+Jt7qo1FgTtLr/0WbGyHU=",
+        "lastModified": 1783531602,
+        "narHash": "sha256-6sTGn2cQOoehwSNbylGc69mNwRYLFL/BfYXDQmMILXY=",
         "owner": "nebelhaus",
         "repo": "nebelung",
-        "rev": "db8ad22ddc1db78aca4d00719f9d3809b4a51947",
+        "rev": "571fd85560801df6b6a3888b20445f142a55677c",
         "type": "github"
       },
       "original": {
