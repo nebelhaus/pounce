@@ -126,70 +126,75 @@ final class PounceUI {
             positionFresh(size: target)
             hosting.frame = window.contentView?.bounds ?? .zero
         }
-        // Non-fresh (window already up, e.g. swapping in step 2 after the skeleton):
-        // leave the current size and let the deferred resizeToFit tween to the new
-        // content height, so the step transition animates instead of snapping.
+        // Non-fresh (window already up, e.g. swapping step 2 into the live window):
+        // leave the current size; the deferred resizeToFit snaps it to the new mode.
 
-        window.alphaValue = 1
+        // Hold the incoming content dark until the deferred pass has sized it and
+        // SwiftUI has painted it, then reveal it fully-formed in one step. present()
+        // runs synchronously right after state.reset()/load(), but SwiftUI hasn't
+        // reconciled the displayMode swap yet, so any size read now can still report
+        // the PREVIOUS view. Showing content before the async correction lands is
+        // what flashed — either the stale oversized W×H (fresh open) or the new grid
+        // mid-resize/mid-reconcile (step swap). FRESH gates the whole WINDOW (it has
+        // to reposition too); a non-fresh step swap gates just the CONTENT so the
+        // panel chrome stays put underneath.
+        window.alphaValue = fresh ? 0 : 1
+        if !fresh { hosting.alphaValue = 0 }
         state.isVisible = true
 
         window.makeKeyAndOrderFront(nil)
         if fresh { NSApp.activate(ignoringOtherApps: true) }
         if let tf = state.textField { window.makeFirstResponder(tf) }
 
-        // Fit to the freshly-loaded content once SwiftUI has laid it out. Animate
-        // the step transition (non-fresh); keep the first-appear correction instant.
-        DispatchQueue.main.async { [weak self] in self?.resizeToFit(animated: !fresh) }
+        // One runloop tick later SwiftUI has reconciled the new mode: size to it and
+        // unveil crisply, in a single step (no frame tween → no shear; no crossfade
+        // → no low-contrast header lagging the grid). resizeToFit reveals the
+        // content; a fresh open also lifts the window veil once it's positioned.
+        DispatchQueue.main.async { [weak self] in
+            guard let self = self else { return }
+            self.resizeToFit()
+            if fresh { self.window.alphaValue = 1 }
+        }
     }
 
     // Match the window height to the SwiftUI content, anchoring the top edge so
-    // the list grows/shrinks downward as the query filters it.
-    // animated=true gives a slight eased height/width tween — used for the step
-    // transitions (step 1 → skeleton → step 2). Typing-driven resizes pass false
-    // so filtering stays instant/snappy.
-    func resizeToFit(animated: Bool = false) {
+    // the list grows/shrinks downward as the query filters it. Always a crisp,
+    // instant snap — both typing-driven filtering AND mode swaps (launcher →
+    // emoji/clipboard). We never tween the frame: an animated setFrame runs an
+    // implicit animation on the content layer that scales/shears the just-rendered
+    // grid mid-flight — the "sheared panel" jank — and morphing geometry between
+    // two unrelated layouts is the wrong metaphor anyway. A step swap instead hides
+    // its content in present() and this reveals it, so the change is one clean cut.
+    func resizeToFit() {
         guard window.isVisible else { return }
         hosting.layoutSubtreeIfNeeded()
         let h = hosting.fittingSize.height
         let w = state.targetWidth
-        guard h > 1,
-              abs(h - window.frame.height) > 0.5 || abs(w - window.frame.width) > 0.5 else { return }
-        let oldTop = window.frame.maxY
-        var f = window.frame
-        f.size.height = h
-        f.size.width = w
-        f.origin.y = oldTop - h          // anchor the top edge; grow/shrink downward
-        if let vf = (window.screen ?? NSScreen.main)?.visibleFrame {
-            f.origin.x = vf.midX - w / 2  // keep centered if the width changed
-        }
-        if animated {
-            // Pin the content to its FINAL height at the current top edge before
-            // tweening. With the .minYMargin autoresizing mask the content then
-            // stays put (top-anchored) while the window reveals/covers from the
-            // bottom — no vertical slide.
-            let contentH = window.contentView?.bounds.height ?? window.frame.height
-            hosting.frame = NSRect(x: 0, y: contentH - h, width: w, height: h)
-            NSAnimationContext.runAnimationGroup({ ctx in
-                ctx.duration = 0.09
-                ctx.timingFunction = CAMediaTimingFunction(name: .easeOut)
-                ctx.allowsImplicitAnimation = true
-                window.animator().setFrame(f, display: true)
-            }, completionHandler: { [weak self] in
-                // When the window WIDTH changes (e.g. the 720/600 launcher swapping
-                // into an 820 two-pane view), the .width autoresizing mask inflates
-                // hosting by the same delta, leaving it wider than the content view —
-                // NSHostingView then centres the fixed-width content and it drifts
-                // right. Snap the frame back to the final bounds so it stays flush.
-                guard let self = self else { return }
-                self.hosting.frame = self.window.contentView?.bounds ?? .zero
-            })
-        } else {
+        if h > 1, abs(h - window.frame.height) > 0.5 || abs(w - window.frame.width) > 0.5 {
+            let oldTop = window.frame.maxY
+            var f = window.frame
+            f.size.height = h
+            f.size.width = w
+            f.origin.y = oldTop - h          // anchor the top edge; grow/shrink downward
+            if let vf = (window.screen ?? NSScreen.main)?.visibleFrame {
+                f.origin.x = vf.midX - w / 2  // keep centered if the width changed
+            }
             // Commit the frame + hosting bounds atomically with implicit animation
-            // off, so the blur material can't animate/flicker through the resize.
+            // off, so nothing (blur material, content layer) tweens/flickers through
+            // the resize.
             CATransaction.begin()
             CATransaction.setDisableActions(true)
             window.setFrame(f, display: true)
             hosting.frame = window.contentView?.bounds ?? .zero
+            CATransaction.commit()
+        }
+        // Content is now sized and laid out — unveil it in one step (a no-op unless
+        // a step swap hid it in present()). Instant, never a fade: a crossfade would
+        // expose the low-contrast search header lagging the emoji grid for a frame.
+        if hosting.alphaValue != 1 {
+            CATransaction.begin()
+            CATransaction.setDisableActions(true)
+            hosting.alphaValue = 1
             CATransaction.commit()
         }
     }
