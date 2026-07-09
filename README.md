@@ -12,8 +12,8 @@ a native, scriptable, keyboard-first command palette for macOS
 ![brew](https://img.shields.io/badge/brew-nebelhaus%2Ftap-f5b58e?labelColor=202020)
 ![license](https://img.shields.io/badge/license-MIT-d7d7d7?labelColor=202020)
 
-<!-- assets/demo.gif — trigger hotkey, fuzzy-type an app, then a command with a submenu -->
-![pounce demo](./assets/demo.gif)
+<!-- assets/demo.webp — trigger hotkey, fuzzy-type an app, then a command with a submenu -->
+![pounce demo](./assets/demo.webp)
 
 </div>
 
