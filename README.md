@@ -138,6 +138,12 @@ osascript -e 'display notification "🐾" with title "Pounce"'
 Drop that in `~/.config/pounce/commands/hello.sh` and it's in the palette on
 the next open.
 
+> Using pounce as part of the [nebelhaus](https://nebelhaus.com) rice? The
+> [Pounce guide](https://nebelhaus.com/guides/pounce/) and
+> [Writing pounce commands](https://nebelhaus.com/guides/pounce-commands/) walk
+> through the palette and how rice/machine-specific commands are layered on
+> declaratively.
+
 <!-- S14 — the hello.sh script (left) live in the palette (assets/command-is-a-file.webp) -->
 <div align="center">
 <img src="./assets/command-is-a-file.webp" alt="the same five-line script, live in the palette" width="820">
