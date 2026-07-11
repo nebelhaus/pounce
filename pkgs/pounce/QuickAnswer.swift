@@ -16,10 +16,10 @@ import Foundation
 //   well under a millisecond) and must return nil cheaply for queries it
 //   doesn't own. Parse failure IS the gate — there's no trigger prefix, no
 //   registration of keywords.
-// * Engines that need external data (a future CurrencyEngine for
-//   `100 usd in eur`) still evaluate synchronously: they read an in-memory
-//   cache that a background task refreshes (the AppScanner.warm pattern) and
-//   return nil until it's warm. Never block a keystroke on I/O.
+// * Engines that need external data still evaluate synchronously: they read
+//   an in-memory cache that a background task refreshes (the AppScanner.warm
+//   pattern) and return nil until it's warm. Never block a keystroke on I/O.
+//   CurrencyEngine (Currency.swift) is the reference implementation.
 // * Order in `engines` is priority: the first non-nil answer wins, so put
 //   cheap/likely engines first.
 // * Keep engine files Foundation-only (no AppKit/SwiftUI) so tests/run.sh can
@@ -38,9 +38,13 @@ protocol QuickAnswerEngine {
 }
 
 enum QuickAnswerHub {
+    // Units before currency: when both sides resolve as physical units
+    // ("1 pound in kg") the unit reading wins; currency picks up the rest
+    // ("1 pound in usd").
     static let engines: [QuickAnswerEngine] = [
         MathEngine(),
         UnitConversionEngine(),
+        CurrencyEngine(),
         TimeZoneEngine(),
     ]
 

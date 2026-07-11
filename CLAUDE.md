@@ -65,8 +65,10 @@ pkgs/pounce-commands/   default.nix (runtime command discovery) + commands/*.sh 
   An engine is one **Foundation-only** file (no AppKit/SwiftUI — the test binary
   compiles it) whose `evaluate(query)` is synchronous, sub-millisecond, and
   returns nil for queries it doesn't own: parse failure is the gate, there is no
-  trigger prefix. Engines needing external data (currency rates) read a
-  background-refreshed in-memory cache — never block a keystroke on I/O.
+  trigger prefix. Engines needing external data read a background-refreshed
+  in-memory cache — never block a keystroke on I/O (`Currency.swift` is the
+  reference: ECB rates, 12h refresh, disk fallback, gated by
+  `quickAnswers.currency` in config.json as pounce's only network call).
   Register in `QuickAnswerHub.engines`, add cases to `tests/quickanswer_tests.swift`.
 - **Accessibility (TCC)**: a store build is adhoc-signed, so its grant is lost on
   rebuild. The *rice* (`nebelhaus/modules/pounce`) re-signs a stable copy to keep the

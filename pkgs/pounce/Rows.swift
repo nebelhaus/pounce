@@ -72,34 +72,43 @@ struct ItemRow: View {
 
 // MARK: - AnswerRow
 
-// The quick answer's pinned row (inline calculator & friends): the result
-// front and center in a heavier weight, the interpretation right-aligned
-// where ItemRow keeps its subtitle. Same height as a normal row so
-// ContentView's list geometry holds unchanged.
+// The quick answer's pinned hero card (inline calculator & friends): a
+// tinted icon badge, the result big and front-and-center, the
+// interpretation underneath. Taller than a standard row — ContentView's
+// listHeight accounts for the difference via AnswerRow.height.
 struct AnswerRow: View {
+    static let height: CGFloat = 76
     let item: PounceItem
     let isSelected: Bool
 
+    var accent: Color { isSelected ? Theme.mauve : Theme.blue }
+
     var body: some View {
         HStack(spacing: 14) {
-            Image(systemName: item.icon ?? "equal.square")
-                .font(.system(size: 17, weight: .medium))
-                .foregroundColor(isSelected ? Theme.mauve : Theme.blue)
-                .frame(width: 26, height: 26)
+            ZStack {
+                RoundedRectangle(cornerRadius: 9)
+                    .fill(accent.opacity(0.18))
+                Image(systemName: item.icon ?? "equal.square")
+                    .font(.system(size: 18, weight: .semibold))
+                    .foregroundColor(accent)
+            }
+            .frame(width: 40, height: 40)
 
-            Text(item.title)
-                .foregroundColor(Theme.text)
-                .font(.system(size: 17, weight: .semibold, design: .rounded))
-                .lineLimit(1)
+            VStack(alignment: .leading, spacing: 3) {
+                Text(item.title)
+                    .foregroundColor(Theme.text)
+                    .font(.system(size: 25, weight: .semibold, design: .rounded))
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.45)   // long results shrink, never clip
+                if let subtitle = item.subtitle {
+                    Text(subtitle)
+                        .foregroundColor(Theme.subtext0)
+                        .font(.system(size: 12, design: .rounded))
+                        .lineLimit(1)
+                }
+            }
 
             Spacer(minLength: 8)
-
-            if let subtitle = item.subtitle {
-                Text(subtitle)
-                    .foregroundColor(Theme.subtext0)
-                    .font(.system(size: 13, design: .rounded))
-                    .lineLimit(1)
-            }
         }
         .padding(.horizontal, 14)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)

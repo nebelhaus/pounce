@@ -46,9 +46,10 @@ struct TimeZoneEngine: QuickAnswerEngine {
         guard let instant = sourceCal.date(from: comps) else { return nil }
 
         let formatter = DateFormatter()
-        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.locale = CalcFormat.locale   // 12/24h per the user's locale
         formatter.timeZone = dest.tz
-        formatter.dateFormat = "h:mm a"
+        formatter.dateStyle = .none
+        formatter.timeStyle = .short
         var display = formatter.string(from: instant)
 
         // Crossing midnight is the detail people get wrong — call it out.

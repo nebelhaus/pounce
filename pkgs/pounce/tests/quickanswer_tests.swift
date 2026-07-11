@@ -8,6 +8,10 @@ import Foundation
 
 func runQuickAnswerTests() -> Int {
     var failures = 0
+    // Output formatting follows CalcFormat.locale (user's locale in the app);
+    // pin it for deterministic expectations. A de_DE block below proves the
+    // knob actually steers the output.
+    CalcFormat.locale = Locale(identifier: "en_US")
     func expect(_ condition: Bool, _ message: String) {
         if !condition {
             FileHandle.standardError.write(Data("FAIL: \(message)\n".utf8))
@@ -85,8 +89,32 @@ func runQuickAnswerTests() -> Int {
            "unit display carries the target symbol")
 
     rejects("10 km in kg")       // cross-dimension
-    rejects("100 usd in eur")    // currency needs its own (future) engine
+    rejects("100 usd in eur")    // currency cache still cold → stays a search
     rejects("10 zorble in mi")
+
+    // MARK: currency (reads the injected cache; never fetches in tests)
+
+    CurrencyRates.shared.install(["USD": 1.08, "GBP": 0.85, "JPY": 170.0],
+                                 asOf: "2026-07-10")
+    copies("100 usd in eur", "92.59")     // 100 / 1.08
+    copies("$100 in eur", "92.59")        // leading symbol
+    copies("100 usd to gbp", "78.7")      // 100 / 1.08 × 0.85
+    copies("50 euros in yen", "8500")     // spoken names
+    copies("1 pound in usd", "1.27")      // GBP the currency, not lb the mass
+    rejects("100 xyz in eur")             // no such rate
+    expect(QuickAnswerHub.answer(for: "100 usd in eur")?.display == "92.59 EUR",
+           "currency display carries the code")
+    expect(QuickAnswerHub.answer(for: "50 euros in yen")?.display == "8,500 JPY",
+           "currency display groups thousands")
+
+    // MARK: locale-aware output (the CalcFormat.locale knob)
+
+    CalcFormat.locale = Locale(identifier: "de_DE")
+    expect(QuickAnswerHub.answer(for: "2*847")?.display == "1.694",
+           "de_DE groups thousands with dots")
+    expect(QuickAnswerHub.answer(for: "1/4")?.copyText == "0,25",
+           "de_DE copy text uses the decimal comma")
+    CalcFormat.locale = Locale(identifier: "en_US")
 
     // MARK: unit machinery, link by link (pinpoints which stage regressed)
 
@@ -111,7 +139,10 @@ func runQuickAnswerTests() -> Int {
     let jan15 = Date(timeIntervalSince1970: 1_768_500_000)  // 2026-01-15T18:00Z
     let tz = TimeZoneEngine()
     func zone(_ query: String, _ expected: String) {
+        // Recent ICU puts a narrow no-break space (U+202F) before AM/PM;
+        // normalize so the expectations read as plain text.
         let got = tz.evaluate(query, on: jan15)?.copyText
+            .replacingOccurrences(of: "\u{202F}", with: " ")
         expect(got == expected, "\(query) → \(got ?? "nil"), want \(expected)")
     }
 

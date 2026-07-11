@@ -99,9 +99,14 @@ struct ContentView: View {
         return rows
     }
 
+    // True when the pinned quick answer leads the list (its hero card is
+    // taller than a standard row).
+    var hasAnswer: Bool { visible.first?.kind == .answer }
+
     var listHeight: CGFloat {
         let cap = min(visible.count, maxVisibleItems)
-        guard hasGroups else { return CGFloat(cap) * rowHeight }
+        let answerExtra = hasAnswer && cap > 0 ? AnswerRow.height - rowHeight : 0
+        guard hasGroups else { return CGFloat(cap) * rowHeight + answerExtra }
         // Fit `cap` items plus whatever headers precede them in the window.
         var items = 0, headers = 0
         for row in renderRows {
@@ -111,7 +116,7 @@ struct ContentView: View {
             case .item: items += 1
             }
         }
-        return CGFloat(cap) * rowHeight + CGFloat(headers) * GroupHeaderRow.height
+        return CGFloat(cap) * rowHeight + CGFloat(headers) * GroupHeaderRow.height + answerExtra
     }
 
     var body: some View {
@@ -184,7 +189,7 @@ struct ContentView: View {
                                             ItemRow(item: item, isSelected: i == selectedIndex)
                                         }
                                     }
-                                    .frame(height: rowHeight)
+                                    .frame(height: item.kind == .answer ? AnswerRow.height : rowHeight)
                                     .id(item.id)
                                     .onTapGesture { selectedIndex = i; select(action: "enter") }
                                 }
@@ -212,6 +217,9 @@ struct ContentView: View {
         .onChange(of: state.query) { selectedIndex = 0; revealed = false }
         .onChange(of: visible.count) { state.onResize?() }
         .onChange(of: renderRows.count) { state.onResize?() }
+        // The answer card can appear/vanish while the row COUNT stays equal
+        // (its slot swaps with a match) — that still changes the height.
+        .onChange(of: hasAnswer) { state.onResize?() }
         .onChange(of: state.requestID) { selectedIndex = 0; revealed = false; state.onResize?() }
     }
 

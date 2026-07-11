@@ -32,8 +32,13 @@ struct MathEngine: QuickAnswerEngine {
 // MARK: - Result formatting
 
 enum CalcFormat {
-    // Fixed en_US formatting for now (grouping ",", decimal ".") so results —
-    // and the tests — are deterministic; per-locale output is a later polish.
+    // Output locale for every quick answer — display AND copy text (pasting
+    // "0,3" should match the user's decimal comma). Input parsing stays
+    // dot-decimal / comma-thousands (see the lexer): output-only locale is
+    // the deliberate first slice, since "1,234" as input is ambiguous.
+    // Tests pin this to en_US (and briefly de_DE) for determinism.
+    static var locale: Locale = .autoupdatingCurrent
+
     static func display(_ v: Double, maxSignificant: Int = 10) -> String {
         format(v, grouping: true, maxSignificant: maxSignificant)
     }
@@ -45,7 +50,7 @@ enum CalcFormat {
     private static func format(_ v: Double, grouping: Bool, maxSignificant: Int) -> String {
         if v == 0 { return "0" }   // never "-0"
         let f = NumberFormatter()
-        f.locale = Locale(identifier: "en_US")
+        f.locale = locale
         if abs(v) >= 1e15 || abs(v) < 1e-9 {
             f.numberStyle = .scientific
             f.exponentSymbol = "e"

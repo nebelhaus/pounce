@@ -109,6 +109,16 @@ enum DaemonMode {
 
         let settings = Settings.load()
 
+        // Currency rates for the quick-answer engine: hydrate from the disk
+        // cache now, refresh from the network when stale, re-check every 6h.
+        // Keystrokes only ever read the warmed in-memory table.
+        if settings.quickAnswers.currency {
+            CurrencyRates.shared.warm()
+            Timer.scheduledTimer(withTimeInterval: 6 * 3600, repeats: true) { _ in
+                CurrencyRates.shared.warm()
+            }
+        }
+
         // The in-process launcher: what ⌘Space triggers. No shell, no client, no
         // socket — build the launcher from the cached registry + warm app list and
         // present the already-built window straight away. Toggling: a second press
