@@ -1,5 +1,5 @@
 // Unit tests for pounce's pure logic: Frecency's ranking math (below) and the
-// quick-answer engines (tests/quickanswer.swift). Deliberately assertion-based
+// quick-answer engines (tests/quickanswer_tests.swift). Deliberately assertion-based
 // (no XCTest/SwiftPM) so it compiles with the very same `xcrun swiftc` the app
 // build uses — see tests/run.sh. Lives under tests/ so pkgs/pounce/*.swift (the
 // app's single-module glob) never sweeps it into the shipped binary. Named

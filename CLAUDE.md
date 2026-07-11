@@ -67,7 +67,7 @@ pkgs/pounce-commands/   default.nix (runtime command discovery) + commands/*.sh 
   returns nil for queries it doesn't own: parse failure is the gate, there is no
   trigger prefix. Engines needing external data (currency rates) read a
   background-refreshed in-memory cache — never block a keystroke on I/O.
-  Register in `QuickAnswerHub.engines`, add cases to `tests/quickanswer.swift`.
+  Register in `QuickAnswerHub.engines`, add cases to `tests/quickanswer_tests.swift`.
 - **Accessibility (TCC)**: a store build is adhoc-signed, so its grant is lost on
   rebuild. The *rice* (`nebelhaus/modules/pounce`) re-signs a stable copy to keep the
   grant — that logic lives there, not here. Here, just: `pounce --request-accessibility`

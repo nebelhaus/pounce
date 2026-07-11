@@ -90,7 +90,7 @@ func runQuickAnswerTests() -> Int {
 
     // MARK: timezone (pinned date: 2026-01-15, so PST not PDT)
 
-    let jan15 = Date(timeIntervalSince1970: 1_768_500_000)  // 2026-01-15T18:40Z
+    let jan15 = Date(timeIntervalSince1970: 1_768_500_000)  // 2026-01-15T18:00Z
     let tz = TimeZoneEngine()
     func zone(_ query: String, _ expected: String) {
         let got = tz.evaluate(query, on: jan15)?.copyText

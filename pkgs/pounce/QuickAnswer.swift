@@ -24,7 +24,7 @@ import Foundation
 //   cheap/likely engines first.
 // * Keep engine files Foundation-only (no AppKit/SwiftUI) so tests/run.sh can
 //   compile them into the pure-logic test binary — and add cases to
-//   tests/quickanswer.swift.
+//   tests/quickanswer_tests.swift.
 
 struct QuickAnswer {
     let display: String   // what the row shows big: "1,694"

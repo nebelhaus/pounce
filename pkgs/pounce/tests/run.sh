@@ -15,7 +15,10 @@ bin="$(mktemp -d)/pounce-tests"
 # main.swift because swiftc only permits top-level executable code (the
 # assertions) in a file with that base name when several files are compiled
 # together.
+# (Test files carry a _tests suffix: macOS builds on a case-insensitive
+# filesystem, where tests/quickanswer.swift and QuickAnswer.swift would
+# collide to the same object file and silently drop one file's symbols.)
 /usr/bin/xcrun swiftc -o "$bin" \
   Frecency.swift QuickAnswer.swift Calculator.swift UnitConvert.swift TimeConvert.swift \
-  tests/main.swift tests/quickanswer.swift
+  tests/main.swift tests/quickanswer_tests.swift
 "$bin"
