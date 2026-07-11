@@ -36,10 +36,10 @@ whole toolchain), so it needs **Xcode Command Line Tools** and the macOS build s
 relaxed (Determinate's default). Not a pure build; that's deliberate. CI builds it on
 a macOS runner on every push.
 
-To test inside the full rice without pushing: `haus try` from the workshop
+To test inside the full rice without pushing: `bench try` from the workshop
 (`~/code/nebelhaus`) rebuilds the user's machine against this local checkout; the
 `rebuild-pounce` alias on the host does the same. A plain rebuild uses the pinned
-GitHub rev — after pushing here, ripple with `haus ship` (or `nix flake update
+GitHub rev — after pushing here, ripple with `bench ship` (or `nix flake update
 nebelhaus` in the consumer).
 
 ## Layout

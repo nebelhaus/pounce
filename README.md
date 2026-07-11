@@ -245,7 +245,7 @@ nix build            # -> ./result/Applications/Pounce.app + ./result/bin/pounce
 ```
 
 Hacking on pounce as part of the wider rice? The
-[workshop](https://github.com/nebelhaus/workshop)'s `haus try` rebuilds a whole
+[workshop](https://github.com/nebelhaus/workshop)'s `bench try` rebuilds a whole
 nebelhaus machine against your local checkout, uncommitted edits included.
 
 ## license
