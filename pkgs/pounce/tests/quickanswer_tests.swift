@@ -97,8 +97,11 @@ func runQuickAnswerTests() -> Int {
     expect(dayEntry != nil, "resolve('days') via plural strip")
     expect(hourEntry != nil, "resolve('hours') via plural strip")
     if let d = dayEntry, let h = hourEntry {
-        expect(type(of: d.unit) == type(of: h.unit),
-               "day/hour share a dimension class (got \(type(of: d.unit)) vs \(type(of: h.unit)))")
+        // NOT type(of:) equality: factory units live in private static
+        // subclasses (_NSStatic_NSUnitDuration), custom units don't.
+        expect(UnitTable.sameDimension(d.unit, h.unit), "day/hour share a dimension")
+        expect(!UnitTable.sameDimension(d.unit, UnitMass.kilograms),
+               "day/kg must not share a dimension")
         let hours = Measurement(value: 2, unit: d.unit).converted(to: h.unit).value
         expect(abs(hours - 48) < 1e-9, "2 days converts to 48 hours (got \(hours))")
     }

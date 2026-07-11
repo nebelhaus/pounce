@@ -16,7 +16,7 @@ struct UnitConversionEngine: QuickAnswerEngine {
                   let to = UnitTable.resolve(candidate.to),
                   // Same physical dimension only; converted(to:) traps on a
                   // cross-dimension pair ("10 km in kg").
-                  type(of: from.unit) == type(of: to.unit)
+                  UnitTable.sameDimension(from.unit, to.unit)
             else { continue }
             let converted = Measurement(value: candidate.amount, unit: from.unit)
                 .converted(to: to.unit)
@@ -126,6 +126,15 @@ enum UnitTable {
         entry(UnitAngle.radians, "radians", ["rad", "radian"], into: &t)
         return t
     }()
+
+    // Same physical dimension? Deliberately NOT type(of:) equality: Apple's
+    // factory units (UnitDuration.hours) are instances of private static
+    // subclasses (_NSStatic_NSUnitDuration), so a custom unit (day, above)
+    // never shares their exact class. Kinship in either direction pins both
+    // to one Dimension subclass without naming private classes.
+    static func sameDimension(_ a: Dimension, _ b: Dimension) -> Bool {
+        a.isKind(of: type(of: b)) || b.isKind(of: type(of: a))
+    }
 
     // Tokens arrive lowercased/single-spaced from ConversionQuery. Try the
     // exact spelling, then strip a plural "s"/"es" and a "°" prefix.
