@@ -41,4 +41,4 @@ jobs:
       - name: shellcheck
         run: |
           sudo apt-get update && sudo apt-get install -y shellcheck
-          shellcheck --severity=warning pkgs/pounce-commands/pounce-palette pkgs/pounce-commands/commands/*.sh
+          shellcheck --severity=warning pkgs/pounce-commands/pounce-palette pkgs/pounce-commands/commands/*.sh pkgs/pounce-commands/optional/*.sh

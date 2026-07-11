@@ -174,6 +174,35 @@ filename:
 3. `$POUNCE_COMMAND_PATH` (colon-separated directories)
 4. `~/.config/pounce/commands` — yours, highest precedence
 
+### optional plugins (off by default)
+
+Beyond the built-in set there's a shelf of **optional plugins** in
+[`pkgs/pounce-commands/optional/`](./pkgs/pounce-commands/optional). They ship
+off by default because each one assumes a specific tool, service, or app on
+your machine:
+
+| id | what it does | assumes |
+|----|--------------|---------|
+| `audio` | switch sound output / input device | `brew install switchaudio-osx` |
+| `bluetooth` | connect & disconnect paired devices (AirPods…) | `brew install blueutil` |
+| `caffeinate` | keep the Mac awake (indefinitely or on a timer) | — (system `caffeinate`) |
+| `docker` | start / stop / restart containers, tail logs | a docker engine (Docker Desktop, OrbStack, colima) |
+| `github` | jump to your PRs, review requests, issues, repos | `brew install gh` + `gh auth login` |
+| `spotify` | play / pause / skip / shuffle, copy song link | Spotify.app |
+| `ssh` | pick a host from `~/.ssh/config`, opens `ssh://` | hosts in `~/.ssh/config` |
+| `tailscale` | connect toggle, copy your / any peer's tailnet IP | Tailscale |
+
+Enable the ones you use by id:
+
+```nix
+pounce-commands.override { plugins = [ "docker" "ssh" "tailscale" ]; }
+```
+
+An enabled plugin behaves exactly like a built-in — same palette discovery,
+same `pounce-<id>` bin for hotkey bindings, still shadowable from your user
+dir. Not on Nix? Every plugin is still just one script: copy it into
+`~/.config/pounce/commands/` and it's live.
+
 ### submenus (two-step commands)
 
 Set `# pounce: submenu = true` and have your script feed a new list back into `pounce`.
