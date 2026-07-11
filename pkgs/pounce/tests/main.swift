@@ -1,7 +1,9 @@
 // Unit tests for Frecency's ranking math. Deliberately assertion-based (no
 // XCTest/SwiftPM) so it compiles with the very same `xcrun swiftc` the app
 // build uses — see tests/run.sh. Lives under tests/ so pkgs/pounce/*.swift (the
-// app's single-module glob) never sweeps it into the shipped binary.
+// app's single-module glob) never sweeps it into the shipped binary. Named
+// main.swift because the assertions run as top-level code, which swiftc only
+// allows in a file with that base name when compiled alongside Frecency.swift.
 //
 // Only the pure Frecency.decayedScore is exercised here; the instance
 // score(for:)/record touch the filesystem and the wall clock, which is exactly
