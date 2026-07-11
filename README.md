@@ -57,7 +57,7 @@ extensions, use Raycast. If you want to *own* your launcher, pounce.
 Or try it without installing:
 
 ```sh
-nix run github:nebelhaus/pounce -- --help
+nix run github:nebelhaus/pounce -- --version
 ```
 
 ### Homebrew
@@ -119,6 +119,9 @@ Common flags:
 | `-i <sf-symbol>` | prompt icon (an SF Symbol name) |
 | `--launcher` | also enumerate & rank installed apps, and launch them natively |
 | `--max-empty <n>` | how many rows to show before the user types |
+| `--clipboard` / `--emoji` / `--screenshots` / `--camera` | the built-in native modes |
+| `--cheatsheet [path]` | overlay a cheatsheet (JSON) |
+| `--copy-file <path>` | copy a file (contents) to the clipboard |
 | `--request-accessibility` / `--check-accessibility` | manage the TCC grant |
 
 ## writing a command (plugin)
