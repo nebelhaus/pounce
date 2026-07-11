@@ -88,6 +88,21 @@ func runQuickAnswerTests() -> Int {
     rejects("100 usd in eur")    // currency needs its own (future) engine
     rejects("10 zorble in mi")
 
+    // MARK: unit machinery, link by link (pinpoints which stage regressed)
+
+    expect(ConversionQuery.parse("2 days in hours").count == 1,
+           "conversion parse finds the days→hours candidate")
+    let dayEntry = UnitTable.resolve("days")
+    let hourEntry = UnitTable.resolve("hours")
+    expect(dayEntry != nil, "resolve('days') via plural strip")
+    expect(hourEntry != nil, "resolve('hours') via plural strip")
+    if let d = dayEntry, let h = hourEntry {
+        expect(type(of: d.unit) == type(of: h.unit),
+               "day/hour share a dimension class (got \(type(of: d.unit)) vs \(type(of: h.unit)))")
+        let hours = Measurement(value: 2, unit: d.unit).converted(to: h.unit).value
+        expect(abs(hours - 48) < 1e-9, "2 days converts to 48 hours (got \(hours))")
+    }
+
     // MARK: timezone (pinned date: 2026-01-15, so PST not PDT)
 
     let jan15 = Date(timeIntervalSince1970: 1_768_500_000)  // 2026-01-15T18:00Z
