@@ -29,10 +29,21 @@ final class Frecency {
         try? encoded.write(to: path, options: .atomic)
     }
 
+    // Pure decay math, split out so it can be unit-tested without touching the
+    // filesystem or the wall clock: score = count · e^(−λ·age). With
+    // λ = ln2 / 72h, one 72-hour gap halves an entry's weight.
+    static func decayedScore(count: Int, lastUsed: Double, now: Double, lambda: Double) -> Double {
+        Double(count) * exp(-lambda * (now - lastUsed))
+    }
+
     func score(for key: String) -> Double {
         guard let entry = data[key] else { return 0 }
-        let age = Date().timeIntervalSince1970 - entry.lastUsed
-        return Double(entry.count) * exp(-lambda * age)
+        return Self.decayedScore(
+            count: entry.count,
+            lastUsed: entry.lastUsed,
+            now: Date().timeIntervalSince1970,
+            lambda: lambda
+        )
     }
 
     func record(_ key: String) {

@@ -19,3 +19,25 @@ jobs:
         with:
           determinate: true
       - run: nix build .#pounce .#pounce-commands --print-build-logs
+
+  test:
+    name: frecency unit tests (swift)
+    # Uses /usr/bin/xcrun swiftc, same as the app build — needs a real Mac.
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v4
+      - name: compile + run pure-logic tests
+        run: pkgs/pounce/tests/run.sh
+
+  commands:
+    name: shellcheck pounce-commands
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      # The launcher's shell commands (pkgs/pounce-commands) — lint at warning
+      # level (real bugs: undefined vars, bad quoting) on a fast Linux runner,
+      # no Mac needed. Verified clean at this severity.
+      - name: shellcheck
+        run: |
+          sudo apt-get update && sudo apt-get install -y shellcheck
+          shellcheck --severity=warning pkgs/pounce-commands/pounce-palette pkgs/pounce-commands/commands/*.sh
