@@ -6,9 +6,38 @@ import ApplicationServices
 
 @main
 enum Main {
+    static let usage = """
+    pounce — summon, aim, pounce. A scriptable command palette for macOS.
+
+    usage:
+      pounce [-p <prompt>] [-i <sf-symbol>] [--max-empty <n>]
+        generic picker: reads lines from stdin, prints the chosen one
+
+    modes:
+      --launcher             apps + commands palette (what the hotkey opens)
+      --clipboard            clipboard history
+      --emoji                emoji picker
+      --screenshots          screenshot browser
+      --camera               camera preview
+      --cheatsheet [path]    cheatsheet overlay (default ~/.config/pounce/cheatsheet.json)
+
+    housekeeping:
+      --daemon                  run the resident daemon (launchd uses this)
+      --copy-file <path>        copy a file to the clipboard and exit
+      --request-accessibility   prompt for the Accessibility (TCC) grant
+      --check-accessibility     print true/false for the grant
+      --version                 print the version
+      -h, --help                this text
+
+    config: ~/.config/pounce/config.json   commands: ~/.config/pounce/commands
+    docs:   https://nebelhaus.com/reference/pounce/
+    """
+
     static func main() {
         let args = CommandLine.arguments
-        if args.contains("--version") {
+        if args.contains("--help") || args.contains("-h") {
+            print(usage)
+        } else if args.contains("--version") {
             // pounceVersion comes from Version.generated.swift (see build.sh).
             print("pounce \(pounceVersion)")
         } else if let i = args.firstIndex(of: "--copy-file"), i + 1 < args.count {

@@ -57,7 +57,7 @@ extensions, use Raycast. If you want to *own* your launcher, pounce.
 Or try it without installing:
 
 ```sh
-nix run github:nebelhaus/pounce -- --version
+nix run github:nebelhaus/pounce -- --help
 ```
 
 ### Homebrew
@@ -123,6 +123,7 @@ Common flags:
 | `--cheatsheet [path]` | overlay a cheatsheet (JSON) |
 | `--copy-file <path>` | copy a file (contents) to the clipboard |
 | `--request-accessibility` / `--check-accessibility` | manage the TCC grant |
+| `-h`, `--help` | usage (the full flag list) |
 
 ## writing a command (plugin)
 
