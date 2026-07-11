@@ -37,18 +37,23 @@ struct ContentView: View {
     }
 
     var filtered: [PounceItem] {
+        let trimmed = state.query.trimmingCharacters(in: .whitespacesAndNewlines)
         let base: [PounceItem]
         if queryIsEmpty {
             base = Array(state.itemsSorted.prefix(state.maxEmpty))
         } else {
-            let q = Array(state.query.trimmingCharacters(in: .whitespacesAndNewlines).lowercased())
+            let q = Array(trimmed.lowercased())
             let scored = state.items.compactMap { item -> (PounceItem, Double)? in
                 guard let s = state.matchScore(item, query: q) else { return nil }
                 return (item, s)
             }
             base = scored.sorted { $0.1 > $1.1 }.map { $0.0 }
         }
-        return grouped(base)
+        let rows = grouped(base)
+        // Expression-shaped query? Pin its quick answer (inline calculator,
+        // conversions, …) above the matches; ⏎ on it copies.
+        if let answer = state.quickAnswerItem(for: trimmed) { return [answer] + rows }
+        return rows
     }
 
     // In compact mode the launcher hides its list on an empty query until the
@@ -172,10 +177,16 @@ struct ContentView: View {
                                         .frame(height: GroupHeaderRow.height)
                                         .id(row.id)
                                 case .item(let item, let i):
-                                    ItemRow(item: item, isSelected: i == selectedIndex)
-                                        .frame(height: rowHeight)
-                                        .id(item.id)
-                                        .onTapGesture { selectedIndex = i; select(action: "enter") }
+                                    Group {
+                                        if item.kind == .answer {
+                                            AnswerRow(item: item, isSelected: i == selectedIndex)
+                                        } else {
+                                            ItemRow(item: item, isSelected: i == selectedIndex)
+                                        }
+                                    }
+                                    .frame(height: rowHeight)
+                                    .id(item.id)
+                                    .onTapGesture { selectedIndex = i; select(action: "enter") }
                                 }
                             }
                         }

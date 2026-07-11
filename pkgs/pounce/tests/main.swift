@@ -1,9 +1,11 @@
-// Unit tests for Frecency's ranking math. Deliberately assertion-based (no
-// XCTest/SwiftPM) so it compiles with the very same `xcrun swiftc` the app
+// Unit tests for pounce's pure logic: Frecency's ranking math (below) and the
+// quick-answer engines (tests/quickanswer.swift). Deliberately assertion-based
+// (no XCTest/SwiftPM) so it compiles with the very same `xcrun swiftc` the app
 // build uses — see tests/run.sh. Lives under tests/ so pkgs/pounce/*.swift (the
 // app's single-module glob) never sweeps it into the shipped binary. Named
 // main.swift because the assertions run as top-level code, which swiftc only
-// allows in a file with that base name when compiled alongside Frecency.swift.
+// allows in a file with that base name when compiled alongside the sources
+// under test.
 //
 // Only the pure Frecency.decayedScore is exercised here; the instance
 // score(for:)/record touch the filesystem and the wall clock, which is exactly
@@ -47,8 +49,11 @@ let fewer = Frecency.decayedScore(count: 2, lastUsed: 0, now: 10_000, lambda: la
 let more = Frecency.decayedScore(count: 9, lastUsed: 0, now: 10_000, lambda: lambda)
 expect(more > fewer, "higher count outranks lower at equal recency")
 
+if failures == 0 { print("ok — all Frecency ranking tests passed") }
+
+failures += runQuickAnswerTests()
+
 if failures == 0 {
-    print("ok — all Frecency ranking tests passed")
     exit(0)
 } else {
     FileHandle.standardError.write(Data("\(failures) test(s) failed\n".utf8))

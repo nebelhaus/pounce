@@ -58,6 +58,16 @@ pkgs/pounce-commands/   default.nix (runtime command discovery) + commands/*.sh 
   to edit. At runtime the palette also discovers user commands from
   `~/.config/pounce/commands`, `$POUNCE_COMMAND_PATH`, and Nix `extraCommandDirs`
   (later wins on filename clash, so users can shadow built-ins).
+- **New quick-answer engine (inline calculator)**: the launcher answers
+  expression-shaped queries inline — math (`2*847`), units (`72 f in c`),
+  timezones (`14:00 utc in pst`) — via the engines registered in
+  `QuickAnswerHub` (`QuickAnswer.swift`, which documents the full contract).
+  An engine is one **Foundation-only** file (no AppKit/SwiftUI — the test binary
+  compiles it) whose `evaluate(query)` is synchronous, sub-millisecond, and
+  returns nil for queries it doesn't own: parse failure is the gate, there is no
+  trigger prefix. Engines needing external data (currency rates) read a
+  background-refreshed in-memory cache — never block a keystroke on I/O.
+  Register in `QuickAnswerHub.engines`, add cases to `tests/quickanswer.swift`.
 - **Accessibility (TCC)**: a store build is adhoc-signed, so its grant is lost on
   rebuild. The *rice* (`nebelhaus/modules/pounce`) re-signs a stable copy to keep the
   grant — that logic lives there, not here. Here, just: `pounce --request-accessibility`

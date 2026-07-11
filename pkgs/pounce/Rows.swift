@@ -70,6 +70,48 @@ struct ItemRow: View {
     }
 }
 
+// MARK: - AnswerRow
+
+// The quick answer's pinned row (inline calculator & friends): the result
+// front and center in a heavier weight, the interpretation right-aligned
+// where ItemRow keeps its subtitle. Same height as a normal row so
+// ContentView's list geometry holds unchanged.
+struct AnswerRow: View {
+    let item: PounceItem
+    let isSelected: Bool
+
+    var body: some View {
+        HStack(spacing: 14) {
+            Image(systemName: item.icon ?? "equal.square")
+                .font(.system(size: 17, weight: .medium))
+                .foregroundColor(isSelected ? Theme.mauve : Theme.blue)
+                .frame(width: 26, height: 26)
+
+            Text(item.title)
+                .foregroundColor(Theme.text)
+                .font(.system(size: 17, weight: .semibold, design: .rounded))
+                .lineLimit(1)
+
+            Spacer(minLength: 8)
+
+            if let subtitle = item.subtitle {
+                Text(subtitle)
+                    .foregroundColor(Theme.subtext0)
+                    .font(.system(size: 13, design: .rounded))
+                    .lineLimit(1)
+            }
+        }
+        .padding(.horizontal, 14)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
+        .background(
+            RoundedRectangle(cornerRadius: 10)
+                .fill(isSelected ? Theme.mauve.opacity(0.20) : Color.clear)
+                .padding(.horizontal, 8)
+        )
+        .contentShape(Rectangle())
+    }
+}
+
 // MARK: - App Icon Cache
 
 final class AppIconCache {
