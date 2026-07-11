@@ -95,6 +95,14 @@ struct ClipboardSettings {
     var autoPaste: Bool = false
 }
 
+// Quick-answer engine toggles. Currency is the only engine that touches the
+// network (daily ECB reference rates from api.frankfurter.app — pounce's sole
+// outbound call, see Currency.swift); set false to keep pounce fully offline.
+// The other engines are pure and always on.
+struct QuickAnswerSettings {
+    var currency: Bool = true
+}
+
 // The daemon's in-process global hotkey (see HotKeyManager). `key` is a named
 // key ("space", "return", "a"…); `modifiers` combine "cmd"/"shift"/"opt"/"ctrl".
 // Defaults to ⌘Space. Set `enabled: false` to leave the hotkey to an external
@@ -111,6 +119,7 @@ struct Settings {
     var windowMode: WindowMode = .standard
     var clipboard = ClipboardSettings()
     var hotkey = HotKeyConfig()
+    var quickAnswers = QuickAnswerSettings()
     // Named color palette (see Palette.named). Defaults to nebelung.
     var theme: String = "nebelung"
 
@@ -144,6 +153,9 @@ struct Settings {
             if let m = cb["maxEntries"] as? Int { s.clipboard.maxEntries = m }
             if let bl = cb["blacklistBundleIds"] as? [String] { s.clipboard.blacklistBundleIds = bl }
             if let ap = cb["autoPaste"] as? Bool { s.clipboard.autoPaste = ap }
+        }
+        if let qa = obj["quickAnswers"] as? [String: Any] {
+            if let c = qa["currency"] as? Bool { s.quickAnswers.currency = c }
         }
         if let hk = obj["hotkey"] as? [String: Any] {
             if let e = hk["enabled"] as? Bool { s.hotkey.enabled = e }

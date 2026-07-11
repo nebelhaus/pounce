@@ -7,11 +7,19 @@
 set -euo pipefail
 cd "$(dirname "$0")/.." # -> pkgs/pounce
 
-bin="$(mktemp -d)/frecency-tests"
-# Frecency.swift only needs Foundation; compiling it together with the test file
-# as one module lets the test reach the module-internal decayedScore(). The test
-# file is named main.swift because swiftc only permits top-level executable code
-# (the assertions below) in a file with that base name when several files are
-# compiled together.
-/usr/bin/xcrun swiftc -o "$bin" Frecency.swift tests/main.swift
+bin="$(mktemp -d)/pounce-tests"
+# The sources under test are Foundation-only by design (no AppKit/SwiftUI) —
+# for the quick-answer engines that's the QuickAnswer.swift contract — which is
+# what keeps this a plain swiftc compile. Compiling them with the test files as
+# one module lets tests reach module-internal API. The entry file is named
+# main.swift because swiftc only permits top-level executable code (the
+# assertions) in a file with that base name when several files are compiled
+# together.
+# (Test files carry a _tests suffix: macOS builds on a case-insensitive
+# filesystem, where tests/quickanswer.swift and QuickAnswer.swift would
+# collide to the same object file and silently drop one file's symbols.)
+/usr/bin/xcrun swiftc -o "$bin" \
+  Frecency.swift QuickAnswer.swift Calculator.swift UnitConvert.swift TimeConvert.swift \
+  Currency.swift \
+  tests/main.swift tests/quickanswer_tests.swift
 "$bin"

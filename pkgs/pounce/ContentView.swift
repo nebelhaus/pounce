@@ -37,18 +37,23 @@ struct ContentView: View {
     }
 
     var filtered: [PounceItem] {
+        let trimmed = state.query.trimmingCharacters(in: .whitespacesAndNewlines)
         let base: [PounceItem]
         if queryIsEmpty {
             base = Array(state.itemsSorted.prefix(state.maxEmpty))
         } else {
-            let q = Array(state.query.trimmingCharacters(in: .whitespacesAndNewlines).lowercased())
+            let q = Array(trimmed.lowercased())
             let scored = state.items.compactMap { item -> (PounceItem, Double)? in
                 guard let s = state.matchScore(item, query: q) else { return nil }
                 return (item, s)
             }
             base = scored.sorted { $0.1 > $1.1 }.map { $0.0 }
         }
-        return grouped(base)
+        let rows = grouped(base)
+        // Expression-shaped query? Pin its quick answer (inline calculator,
+        // conversions, …) above the matches; ⏎ on it copies.
+        if let answer = state.quickAnswerItem(for: trimmed) { return [answer] + rows }
+        return rows
     }
 
     // In compact mode the launcher hides its list on an empty query until the
@@ -94,9 +99,14 @@ struct ContentView: View {
         return rows
     }
 
+    // True when the pinned quick answer leads the list (its hero card is
+    // taller than a standard row).
+    var hasAnswer: Bool { visible.first?.kind == .answer }
+
     var listHeight: CGFloat {
         let cap = min(visible.count, maxVisibleItems)
-        guard hasGroups else { return CGFloat(cap) * rowHeight }
+        let answerExtra = hasAnswer && cap > 0 ? AnswerRow.height - rowHeight : 0
+        guard hasGroups else { return CGFloat(cap) * rowHeight + answerExtra }
         // Fit `cap` items plus whatever headers precede them in the window.
         var items = 0, headers = 0
         for row in renderRows {
@@ -106,7 +116,7 @@ struct ContentView: View {
             case .item: items += 1
             }
         }
-        return CGFloat(cap) * rowHeight + CGFloat(headers) * GroupHeaderRow.height
+        return CGFloat(cap) * rowHeight + CGFloat(headers) * GroupHeaderRow.height + answerExtra
     }
 
     var body: some View {
@@ -172,10 +182,16 @@ struct ContentView: View {
                                         .frame(height: GroupHeaderRow.height)
                                         .id(row.id)
                                 case .item(let item, let i):
-                                    ItemRow(item: item, isSelected: i == selectedIndex)
-                                        .frame(height: rowHeight)
-                                        .id(item.id)
-                                        .onTapGesture { selectedIndex = i; select(action: "enter") }
+                                    Group {
+                                        if item.kind == .answer {
+                                            AnswerRow(item: item, isSelected: i == selectedIndex)
+                                        } else {
+                                            ItemRow(item: item, isSelected: i == selectedIndex)
+                                        }
+                                    }
+                                    .frame(height: item.kind == .answer ? AnswerRow.height : rowHeight)
+                                    .id(item.id)
+                                    .onTapGesture { selectedIndex = i; select(action: "enter") }
                                 }
                             }
                         }
@@ -201,6 +217,9 @@ struct ContentView: View {
         .onChange(of: state.query) { selectedIndex = 0; revealed = false }
         .onChange(of: visible.count) { state.onResize?() }
         .onChange(of: renderRows.count) { state.onResize?() }
+        // The answer card can appear/vanish while the row COUNT stays equal
+        // (its slot swaps with a match) — that still changes the height.
+        .onChange(of: hasAnswer) { state.onResize?() }
         .onChange(of: state.requestID) { selectedIndex = 0; revealed = false; state.onResize?() }
     }
 

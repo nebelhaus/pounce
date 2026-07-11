@@ -6,6 +6,7 @@ enum ItemKind {
     case plain     // generic item from stdin (utility menus): client interprets it
     case command   // launcher command: selecting returns its id to the client
     case app       // launcher app: the daemon launches it natively
+    case answer    // inline quick answer (calculator etc.): ⏎ copies it
 }
 
 struct ItemAction {
@@ -79,6 +80,18 @@ struct PounceItem: Identifiable {
                           actions: [ItemAction(key: "enter", label: "Run")],
                           kind: .command, payload: id,
                           frecencyKey: "cmd:\(id)", baseBoost: 0, group: nil, submenu: submenu)
+    }
+
+    // A quick answer (inline calculator & friends) pinned as the first row.
+    // Query-derived, so it lives outside state.items/frecency: ContentView
+    // prepends it per keystroke and commit() copies `payload` instead of
+    // round-tripping to a client.
+    static func answer(_ a: QuickAnswer) -> PounceItem {
+        return PounceItem(raw: a.copyText, title: a.display, subtitle: a.detail,
+                          icon: a.icon,
+                          actions: [ItemAction(key: "enter", label: "Copy Answer")],
+                          kind: .answer, payload: a.copyText,
+                          frecencyKey: "answer", baseBoost: 0, group: nil, submenu: false)
     }
 
     static func app(name: String, path: String, boost: Double) -> PounceItem {

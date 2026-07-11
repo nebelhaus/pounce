@@ -64,6 +64,12 @@ final class DaemonState: ObservableObject {
     let frecency = Frecency()
     private var frecencyScores: [UUID: Double] = [:]
 
+    // Quick answer (inline calculator & friends) for the current launcher
+    // query. Memoized per query string because ContentView.filtered — where
+    // this is read — re-evaluates on every render, not just on keystrokes.
+    private var answerQuery = ""
+    private var answerItem: PounceItem?
+
     var onCommit: ((Commit) -> Void)?
     var onResize: (() -> Void)?       // content height changed; window should refit
     weak var textField: NSTextField?
@@ -88,6 +94,20 @@ final class DaemonState: ObservableObject {
         cheatsheetGroups = []
         isLoading = false
         query = ""
+        answerQuery = ""
+        answerItem = nil
+    }
+
+    // The quick answer pinned above the launcher's results, if the query is
+    // expression-shaped (see QuickAnswerHub). Launcher-only: utility menus
+    // pipe arbitrary lines where "2*3" may be a legitimate item filter.
+    func quickAnswerItem(for query: String) -> PounceItem? {
+        guard isLauncher, displayMode == .list else { return nil }
+        if query != answerQuery {
+            answerQuery = query
+            answerItem = QuickAnswerHub.answer(for: query).map(PounceItem.answer)
+        }
+        return answerItem
     }
 
     // Load the clipboard history view from the daemon's own store.
@@ -216,6 +236,9 @@ final class DaemonState: ObservableObject {
     }
 
     func commit(_ item: PounceItem, action: String) {
+        // A quick answer copies to the clipboard — no frecency (it's derived
+        // from the query, its rank is fixed) and no client round-trip.
+        if item.kind == .answer { commitAnswer(item); return }
         frecency.record(item.frecencyKey)
         // For a two-step command, seed the loading header with its name + icon so
         // it matches the step-2 header (which arrives with the same -p / -i).
@@ -224,6 +247,25 @@ final class DaemonState: ObservableObject {
             loadingIcon = item.icon ?? "magnifyingglass"
         }
         onCommit?(buildCommit(item, action: action))
+    }
+
+    // Copy the answer's plain text. Same auto-paste contract as commitClip /
+    // commitEmoji: with clipboard.autoPaste on and the Accessibility grant
+    // held, the answer lands straight at the cursor of the previous app.
+    private func commitAnswer(_ item: PounceItem) {
+        let pb = NSPasteboard.general
+        pb.clearContents()
+        pb.setString(item.payload, forType: .string)
+        var paste = false
+        if Settings.load().clipboard.autoPaste {
+            if AXIsProcessTrusted() {
+                paste = true
+            } else {
+                AccessibilityHint.promptOnce()
+            }
+        }
+        onCommit?(Commit(clientString: item.payload, disposition: .hideNow,
+                         appLaunch: nil, pasteAfter: paste))
     }
 
     func commitText(_ text: String) {
@@ -247,6 +289,9 @@ final class DaemonState: ObservableObject {
         case .plain:
             let a = item.action(for: action) != nil ? action : "enter"
             return Commit(clientString: "\(a)\t\(item.raw)", disposition: .linger, appLaunch: nil)
+        case .answer:
+            // Unreachable — commit() routes .answer to commitAnswer first.
+            return Commit(clientString: item.payload, disposition: .hideNow, appLaunch: nil)
         }
     }
 }

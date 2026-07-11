@@ -70,6 +70,57 @@ struct ItemRow: View {
     }
 }
 
+// MARK: - AnswerRow
+
+// The quick answer's pinned hero card (inline calculator & friends): a
+// tinted icon badge, the result big and front-and-center, the
+// interpretation underneath. Taller than a standard row — ContentView's
+// listHeight accounts for the difference via AnswerRow.height.
+struct AnswerRow: View {
+    static let height: CGFloat = 76
+    let item: PounceItem
+    let isSelected: Bool
+
+    var accent: Color { isSelected ? Theme.mauve : Theme.blue }
+
+    var body: some View {
+        HStack(spacing: 14) {
+            ZStack {
+                RoundedRectangle(cornerRadius: 9)
+                    .fill(accent.opacity(0.18))
+                Image(systemName: item.icon ?? "equal.square")
+                    .font(.system(size: 18, weight: .semibold))
+                    .foregroundColor(accent)
+            }
+            .frame(width: 40, height: 40)
+
+            VStack(alignment: .leading, spacing: 3) {
+                Text(item.title)
+                    .foregroundColor(Theme.text)
+                    .font(.system(size: 25, weight: .semibold, design: .rounded))
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.45)   // long results shrink, never clip
+                if let subtitle = item.subtitle {
+                    Text(subtitle)
+                        .foregroundColor(Theme.subtext0)
+                        .font(.system(size: 12, design: .rounded))
+                        .lineLimit(1)
+                }
+            }
+
+            Spacer(minLength: 8)
+        }
+        .padding(.horizontal, 14)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
+        .background(
+            RoundedRectangle(cornerRadius: 10)
+                .fill(isSelected ? Theme.mauve.opacity(0.20) : Color.clear)
+                .padding(.horizontal, 8)
+        )
+        .contentShape(Rectangle())
+    }
+}
+
 // MARK: - App Icon Cache
 
 final class AppIconCache {
