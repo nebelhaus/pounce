@@ -234,6 +234,11 @@ optional and falls back to a default.
     "key": "space",         // "space", "return", "a"…"z", "0"…"9"
     "modifiers": ["cmd"]    // any of "cmd" / "shift" / "opt" / "ctrl"
   },
+  "windows": {
+    "enabled": false,       // MRU window switcher on ⌘Tab (see below; needs Accessibility)
+    "key": "tab",
+    "modifiers": ["cmd"]
+  },
   "clipboard": {
     "enabled": true,
     "maxEntries": 200,
@@ -270,6 +275,30 @@ The default **nebelung** palette is the desaturated Catppuccin used across the
 build time straight from the [nebelung](https://github.com/nebelhaus/nebelung)
 flake, so it never drifts from the rest of the theme. Set `"theme": "mocha"` for
 stock Catppuccin Mocha.
+
+### the window switcher (⌘Tab, opt-in)
+
+With `"windows": { "enabled": true }` the daemon replaces the stock ⌘Tab app
+switcher with an MRU **window** switcher:
+
+- **⌘⇥, release** — toggle straight to the last window you were in, even on
+  another workspace. No HUD, no ceremony.
+- **hold ⌘, keep tapping ⇥** — walk every window, most-recently-used first
+  (⌘⇧⇥ walks backwards; ↑/↓ also move).
+- **hold ⌘ and type** — fuzzy-filter the list, ranked by frecency (which apps'
+  windows you actually switch to). ↵ commits, ⎋ cancels, releasing ⌘ always
+  lands on the selection.
+
+macOS doesn't let ⌘Tab be rebound — the daemon takes it with an event tap,
+which the system gates behind the **Accessibility** grant. Without the grant
+(or during Secure Input, e.g. password fields) the tap stands down and stock
+⌘Tab keeps working, so enabling this can never leave you unable to switch
+windows. It's off by default; toggling needs a daemon restart.
+
+Running [AeroSpace](https://github.com/nikitabobko/AeroSpace)? Each row gets a
+workspace badge, and focusing goes through `aerospace focus --window-id` so a
+window parked on another workspace surfaces correctly — that's the pairing the
+[nebelhaus](https://nebelhaus.com) rice ships enabled.
 
 ## building from source
 
