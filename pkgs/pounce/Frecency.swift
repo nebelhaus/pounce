@@ -9,11 +9,14 @@ final class Frecency {
     private let path: URL
     private let lambda: Double
 
-    init() {
+    // Each consumer gets its own file: two live Frecency instances sharing one
+    // path would clobber each other's whole-file writes (the launcher and the
+    // window switcher both run inside the daemon).
+    init(filename: String = "frecency.json") {
         let dir = FileManager.default.homeDirectoryForCurrentUser
             .appendingPathComponent(".local/share/pounce")
         try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
-        self.path = dir.appendingPathComponent("frecency.json")
+        self.path = dir.appendingPathComponent(filename)
         self.lambda = log(2.0) / (72 * 3600)
         load()
     }

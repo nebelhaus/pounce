@@ -22,7 +22,9 @@ enum Main {
       --cheatsheet [path]    cheatsheet overlay (default ~/.config/pounce/cheatsheet.json)
 
     housekeeping:
-      --daemon                  run the resident daemon (launchd uses this)
+      --daemon                  run the resident daemon (launchd uses this; also
+                                hosts the MRU window switcher when config.json
+                                sets windows.enabled — see the README)
       --copy-file <path>        copy a file to the clipboard and exit
       --request-accessibility   prompt for the Accessibility (TCC) grant
       --check-accessibility     print true/false for the grant
@@ -88,6 +90,8 @@ struct Invocation {
 enum DaemonMode {
     // Retained for the daemon's lifetime so its Carbon handler stays installed.
     static var hotKey: HotKeyManager?
+    // Retained so the ⌘Tab event tap + window tracker stay alive.
+    static var windowSwitcher: WindowSwitcher?
 
     static func run() {
         let app = NSApplication.shared
@@ -157,6 +161,23 @@ enum DaemonMode {
                 }
             } else {
                 NSLog("pounce daemon: unknown hotkey key '\(settings.hotkey.key)'; falling back to socket launch")
+            }
+        }
+
+        // The MRU window switcher (default ⌘Tab, see Switcher.swift). Unlike the
+        // palette hotkey (Carbon, no permissions), taking ⌘Tab needs an event
+        // tap, which macOS gates behind Accessibility — without the grant the
+        // stock switcher is left untouched, so enabling this can never brick
+        // window switching.
+        if settings.windows.enabled {
+            let combo = "\(settings.windows.modifiers.joined(separator: "+"))+\(settings.windows.key)"
+            if !AXIsProcessTrusted() {
+                NSLog("pounce daemon: windows.enabled is set but Accessibility is not granted; window switcher off, stock \(combo) untouched (grant via `pounce --request-accessibility`)")
+            } else if let switcher = WindowSwitcher(settings: settings.windows) {
+                windowSwitcher = switcher
+                NSLog("pounce daemon: window switcher armed on \(combo)")
+            } else {
+                NSLog("pounce daemon: window switcher event tap failed to install; stock \(combo) untouched")
             }
         }
 

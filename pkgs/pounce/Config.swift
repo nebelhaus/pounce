@@ -113,12 +113,25 @@ struct HotKeyConfig {
     var modifiers: [String] = ["cmd"]
 }
 
+// The MRU window switcher (see Switcher.swift): hold `modifiers`, tap `key` to
+// walk windows most-recent-first, release to land. Default off — taking over
+// ⌘Tab is a bold move that additionally needs the Accessibility grant (the
+// event tap won't install without it), so it's strictly opt-in here; opinionated
+// setups (the nebelhaus rice) turn it on in the config they ship. Read once at
+// daemon start: toggling requires a daemon restart, unlike the palette settings.
+struct WindowSwitcherSettings {
+    var enabled: Bool = false
+    var key: String = "tab"
+    var modifiers: [String] = ["cmd"]
+}
+
 struct Settings {
     enum WindowMode: String { case standard = "default", compact }
 
     var windowMode: WindowMode = .standard
     var clipboard = ClipboardSettings()
     var hotkey = HotKeyConfig()
+    var windows = WindowSwitcherSettings()
     var quickAnswers = QuickAnswerSettings()
     // Named color palette (see Palette.named). Defaults to nebelung.
     var theme: String = "nebelung"
@@ -161,6 +174,11 @@ struct Settings {
             if let e = hk["enabled"] as? Bool { s.hotkey.enabled = e }
             if let k = hk["key"] as? String, !k.isEmpty { s.hotkey.key = k }
             if let m = hk["modifiers"] as? [String] { s.hotkey.modifiers = m }
+        }
+        if let w = obj["windows"] as? [String: Any] {
+            if let e = w["enabled"] as? Bool { s.windows.enabled = e }
+            if let k = w["key"] as? String, !k.isEmpty { s.windows.key = k }
+            if let m = w["modifiers"] as? [String], !m.isEmpty { s.windows.modifiers = m }
         }
         return s
     }
