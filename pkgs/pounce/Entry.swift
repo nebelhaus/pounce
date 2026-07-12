@@ -21,6 +21,11 @@ enum Main {
       --camera               camera preview
       --cheatsheet [path]    cheatsheet overlay (default ~/.config/pounce/cheatsheet.json)
 
+    focus (hush):
+      focus status              print on/off from the DoNotDisturb DB (needs Full Disk Access)
+      focus toggle              press the DND symbolic-hotkey chord (needs Accessibility)
+      focus on|off              deterministic: read, press only if needed, verify
+
     housekeeping:
       --daemon                  run the resident daemon (launchd uses this)
       --copy-file <path>        copy a file to the clipboard and exit
@@ -40,6 +45,11 @@ enum Main {
         } else if args.contains("--version") {
             // pounceVersion comes from Version.generated.swift (see build.sh).
             print("pounce \(pounceVersion)")
+        } else if args.count >= 2 && args[1] == "focus" {
+            // Positional on purpose: scripts probe `pounce --help` for
+            // "focus" before calling, so an older binary never falls through
+            // to ClientMode and opens the palette by accident.
+            FocusMode.run(op: args.count >= 3 ? args[2] : nil)
         } else if let i = args.firstIndex(of: "--copy-file"), i + 1 < args.count {
             CopyFileMode.run(path: args[i + 1])
         } else if args.contains("--check-accessibility") {
