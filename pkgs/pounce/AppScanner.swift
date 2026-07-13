@@ -1,12 +1,37 @@
 import Foundation
 
 // MARK: - App Scanner
+//
+// Two sources feed the launcher's app list, unioned so neither can hide an app:
+//
+//   1. A synchronous filesystem walk of the standard Applications dirs. Always
+//      available with zero warm-up, so the very first ⌘Space — before Spotlight
+//      has answered, or on a Mac with indexing disabled — still lists every app
+//      installed the normal way.
+//
+//   2. A live Spotlight index (NSMetadataQuery) of every app bundle the system
+//      knows, wherever it lives on disk. This is what makes pounce match
+//      Spotlight: an app dropped in an odd folder, a Setapp/`nix`-store copy, an
+//      installer that skips /Applications — all surface without hardcoding their
+//      location. The query stays live, so apps installed or removed while the
+//      daemon runs update the list within seconds, no restart needed.
+//
+// apps() returns the union deduped by (symlink-resolved) path, filesystem entry
+// winning a clash so the launch path stays canonical. An empty/late Spotlight
+// snapshot never blanks the list — the filesystem scan is the floor.
 
 final class AppScanner {
     static let shared = AppScanner()
 
     private struct Meta { let name: String; let bundleId: String; let ctime: Double }
-    private var cache: [String: Meta] = [:]          // path -> metadata
+    // A Spotlight hit kept raw (no boost baked in) so the recency boost and the
+    // demotion penalty are recomputed per apps() call, against the live config
+    // and clock rather than frozen at gather time.
+    private struct SpotApp { let name: String; let path: String; let bundleId: String; let added: Double }
+
+    private var cache: [String: Meta] = [:]           // path -> metadata (fs scan)
+    private var spotlight: [SpotApp]? = nil            // nil until the first gather
+    private var query: NSMetadataQuery?
     private let lock = NSLock()
 
     // Rarely-launched apps get pushed below everything at an empty query, so they
@@ -54,9 +79,48 @@ final class AppScanner {
         return 1000.0 * exp(-log(2.0) / halfLife * age)
     }
 
+    // Fold the install-recency boost together with a demotion penalty for junk
+    // apps. A freshly installed demoted app still surfaces (boost 1000 ≫ 5) until
+    // that boost decays; after that only frecency can lift it back.
+    private func makeApp(name: String, path: String, bundleId: String,
+                         age: Double, demoted: Set<String>) -> PounceItem {
+        let b = boost(forAge: age) - (demoted.contains(bundleId) ? Self.demotionPenalty : 0)
+        return .app(name: name, path: path, boost: b)
+    }
+
+    // Stable dedupe key: resolve symlinks so a nix-store app symlinked into
+    // ~/Applications and its store-path twin collapse to one entry.
+    private func dedupeKey(for item: PounceItem) -> String {
+        URL(fileURLWithPath: item.payload).resolvingSymlinksInPath().standardizedFileURL.path
+    }
+
+    // The launcher's app list: filesystem scan ∪ live Spotlight index.
     func apps(demotedBundleIds: Set<String> = defaultDemotedBundleIds) -> [PounceItem] {
-        let fm = FileManager.default
         let now = Date().timeIntervalSince1970
+        let fs = filesystemApps(demotedBundleIds: demotedBundleIds, now: now)
+
+        lock.lock(); let spot = spotlight; lock.unlock()
+        let spotItems: [PounceItem] = (spot ?? []).map {
+            makeApp(name: $0.name, path: $0.path, bundleId: $0.bundleId,
+                    age: now - $0.added, demoted: demotedBundleIds)
+        }
+        guard !spotItems.isEmpty else { return fs }
+
+        var byKey: [String: PounceItem] = [:]
+        var order: [String] = []
+        // Spotlight first, filesystem second: on a key clash the filesystem entry
+        // overwrites, keeping the canonical /Applications launch path and the
+        // display name read from the very bundle we're about to launch.
+        for item in spotItems + fs {
+            let key = dedupeKey(for: item)
+            if byKey[key] == nil { order.append(key) }
+            byKey[key] = item
+        }
+        return order.compactMap { byKey[$0] }
+    }
+
+    private func filesystemApps(demotedBundleIds: Set<String>, now: Double) -> [PounceItem] {
+        let fm = FileManager.default
         var seen = Set<String>()
         var result: [PounceItem] = []
 
@@ -65,7 +129,14 @@ final class AppScanner {
         for dir in searchDirs {
             let keys: [URLResourceKey] = [.isDirectoryKey, .creationDateKey]
             guard let en = fm.enumerator(at: dir, includingPropertiesForKeys: keys,
-                                         options: [.skipsHiddenFiles, .skipsPackageDescendants]) else { continue }
+                                         options: [.skipsHiddenFiles, .skipsPackageDescendants]) else {
+                // A missing ~/Applications is normal; anything else is a real
+                // gap that would silently drop that dir's apps, so log it.
+                if fm.fileExists(atPath: dir.path) {
+                    NSLog("pounce AppScanner: could not enumerate \(dir.path)")
+                }
+                continue
+            }
             while let url = en.nextObject() as? URL {
                 guard url.pathExtension == "app" else { continue }
                 let path = url.path
@@ -82,12 +153,8 @@ final class AppScanner {
                     meta = metadata(for: url, ctime: ctime)
                     cache[path] = meta
                 }
-                // Install-recency boost minus a demotion penalty for junk apps. A
-                // freshly installed demoted app still surfaces (boost 1000 ≫ 5)
-                // until that boost decays; after that only frecency can lift it.
-                let demoted = demotedBundleIds.contains(meta.bundleId)
-                let boost = boost(forAge: now - ctime) - (demoted ? Self.demotionPenalty : 0)
-                result.append(.app(name: meta.name, path: path, boost: boost))
+                result.append(makeApp(name: meta.name, path: path, bundleId: meta.bundleId,
+                                      age: now - ctime, demoted: demotedBundleIds))
             }
         }
         return result
@@ -104,8 +171,80 @@ final class AppScanner {
         return Meta(name: name, bundleId: bundleId, ctime: ctime)
     }
 
-    // Warm the cache off the main thread at startup.
+    // MARK: Spotlight source
+
+    // Keep only top-level, user-launchable apps. A raw "every app bundle" query
+    // is dominated by nested helpers (…/Foo.app/Contents/…/Bar.app), framework
+    // internals under /Library, and build artifacts — none of which a person
+    // launches by name, all of which would drown the palette.
+    private func spotlightAccepts(path: String) -> Bool {
+        guard path.hasSuffix(".app") else { return false }
+        let parent = (path as NSString).deletingLastPathComponent
+        if parent.hasSuffix(".app") || parent.contains(".app/") { return false }
+        let lower = path.lowercased()
+        for bad in ["/library/", "/nix/store/", "/.trash/", "/private/",
+                    "/deriveddata/", "/node_modules/", "/.build/"] {
+            if lower.contains(bad) { return false }
+        }
+        return true
+    }
+
+    private func rebuildSpotlight(from query: NSMetadataQuery) {
+        query.disableUpdates()
+        var items: [SpotApp] = []
+        for i in 0..<query.resultCount {
+            guard let item = query.result(at: i) as? NSMetadataItem,
+                  let path = item.value(forAttribute: NSMetadataItemPathKey) as? String,
+                  spotlightAccepts(path: path) else { continue }
+
+            var name = (item.value(forAttribute: NSMetadataItemDisplayNameKey) as? String)
+                ?? URL(fileURLWithPath: path).deletingPathExtension().lastPathComponent
+            if name.hasSuffix(".app") { name = String(name.dropLast(4)) }
+
+            let bundleId = (item.value(forAttribute: "kMDItemCFBundleIdentifier") as? String) ?? ""
+            // "Added to the system" is the right recency signal for the new-app
+            // boost; fall back to the bundle's creation date.
+            let added = (item.value(forAttribute: "kMDItemDateAdded") as? Date)?.timeIntervalSince1970
+                ?? (item.value(forAttribute: NSMetadataItemFSCreationDateKey) as? Date)?.timeIntervalSince1970
+                ?? 0
+            items.append(SpotApp(name: name, path: path, bundleId: bundleId, added: added))
+        }
+        query.enableUpdates()
+        lock.lock(); spotlight = items; lock.unlock()
+    }
+
+    @objc private func spotlightUpdated(_ note: Notification) {
+        guard let q = note.object as? NSMetadataQuery else { return }
+        rebuildSpotlight(from: q)
+    }
+
+    // Start the live app index. NSMetadataQuery drives itself off a run loop and
+    // posts on the thread it was started from, so anchor it on main.
+    private func startSpotlight() {
+        DispatchQueue.main.async {
+            guard self.query == nil else { return }
+            let q = NSMetadataQuery()
+            q.predicate = NSPredicate(format: "kMDItemContentTypeTree == 'com.apple.application-bundle'")
+            q.searchScopes = [NSMetadataQueryLocalComputerScope]
+            let nc = NotificationCenter.default
+            nc.addObserver(self, selector: #selector(self.spotlightUpdated(_:)),
+                           name: .NSMetadataQueryDidFinishGathering, object: q)
+            nc.addObserver(self, selector: #selector(self.spotlightUpdated(_:)),
+                           name: .NSMetadataQueryDidUpdate, object: q)
+            self.query = q
+            if !q.start() {
+                NSLog("pounce AppScanner: Spotlight app query failed to start; filesystem scan only")
+            }
+        }
+    }
+
+    // Warm both sources at startup: prime the filesystem name/bundle-id cache off
+    // the main thread and kick off the live Spotlight query.
     func warm() {
-        DispatchQueue.global(qos: .utility).async { _ = self.apps() }
+        DispatchQueue.global(qos: .utility).async {
+            _ = self.filesystemApps(demotedBundleIds: Self.defaultDemotedBundleIds,
+                                    now: Date().timeIntervalSince1970)
+        }
+        startSpotlight()
     }
 }
