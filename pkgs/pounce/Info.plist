@@ -18,5 +18,7 @@
     <true/>
     <key>NSCameraUsageDescription</key>
     <string>Pounce shows a live camera preview for the camera peek command.</string>
+    <key>NSBluetoothAlwaysUsageDescription</key>
+    <string>Pounce lists and connects Bluetooth devices for the bluetooth command.</string>
 </dict>
 </plist>
