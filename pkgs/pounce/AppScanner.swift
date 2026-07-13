@@ -23,10 +23,12 @@ import Foundation
 final class AppScanner {
     static let shared = AppScanner()
 
-    private struct Meta { let name: String; let bundleId: String; let ctime: Double }
+    // `helper` flags background/bridge apps that should never appear (see isHelper).
+    private struct Meta { let name: String; let bundleId: String; let ctime: Double; let helper: Bool }
     // A Spotlight hit kept raw (no boost baked in) so the recency boost and the
     // demotion penalty are recomputed per apps() call, against the live config
-    // and clock rather than frozen at gather time.
+    // and clock rather than frozen at gather time. Helpers are dropped at gather
+    // time (see rebuildSpotlight), so a SpotApp is always a launchable app.
     private struct SpotApp { let name: String; let path: String; let bundleId: String; let added: Double }
 
     private var cache: [String: Meta] = [:]           // path -> metadata (fs scan)
@@ -95,15 +97,21 @@ final class AppScanner {
     }
 
     // The launcher's app list: filesystem scan ∪ live Spotlight index.
-    func apps(demotedBundleIds: Set<String> = defaultDemotedBundleIds) -> [PounceItem] {
+    // `hiddenBundleIds` (config: apps.hideBundleIds) drops apps entirely, on top
+    // of the built-in helper filter (isHelper) applied to both sources.
+    func apps(demotedBundleIds: Set<String> = defaultDemotedBundleIds,
+              hiddenBundleIds: Set<String> = []) -> [PounceItem] {
         let now = Date().timeIntervalSince1970
-        let fs = filesystemApps(demotedBundleIds: demotedBundleIds, now: now)
+        let fs = filesystemApps(demotedBundleIds: demotedBundleIds,
+                                hiddenBundleIds: hiddenBundleIds, now: now)
 
         lock.lock(); let spot = spotlight; lock.unlock()
-        let spotItems: [PounceItem] = (spot ?? []).map {
-            makeApp(name: $0.name, path: $0.path, bundleId: $0.bundleId,
-                    age: now - $0.added, demoted: demotedBundleIds)
-        }
+        let spotItems: [PounceItem] = (spot ?? [])
+            .filter { !hiddenBundleIds.contains($0.bundleId) }
+            .map {
+                makeApp(name: $0.name, path: $0.path, bundleId: $0.bundleId,
+                        age: now - $0.added, demoted: demotedBundleIds)
+            }
         guard !spotItems.isEmpty else { return fs }
 
         var byKey: [String: PounceItem] = [:]
@@ -119,7 +127,8 @@ final class AppScanner {
         return order.compactMap { byKey[$0] }
     }
 
-    private func filesystemApps(demotedBundleIds: Set<String>, now: Double) -> [PounceItem] {
+    private func filesystemApps(demotedBundleIds: Set<String>,
+                                hiddenBundleIds: Set<String>, now: Double) -> [PounceItem] {
         let fm = FileManager.default
         var seen = Set<String>()
         var result: [PounceItem] = []
@@ -153,6 +162,10 @@ final class AppScanner {
                     meta = metadata(for: url, ctime: ctime)
                     cache[path] = meta
                 }
+                // Drop background/bridge helpers (see isHelper) and anything the
+                // user pinned to the hide list — neither is a launchable target.
+                if meta.helper { continue }
+                if hiddenBundleIds.contains(meta.bundleId) { continue }
                 result.append(makeApp(name: meta.name, path: path, bundleId: meta.bundleId,
                                       age: now - ctime, demoted: demotedBundleIds))
             }
@@ -168,7 +181,28 @@ final class AppScanner {
             return url.deletingPathExtension().lastPathComponent
         }()
         let bundleId = (info?["CFBundleIdentifier"] as? String) ?? ""
-        return Meta(name: name, bundleId: bundleId, ctime: ctime)
+        return Meta(name: name, bundleId: bundleId, ctime: ctime, helper: isHelper(info))
+    }
+
+    // Helper/bridge apps that clutter the palette without being things you'd
+    // ever launch: pure background agents (LSBackgroundOnly — e.g. Anthropic's
+    // "Claude Code URL Handler", which exists only to catch claude:// links) and
+    // AppleScript droplets (executable "droplet" — e.g. the nebelhaus EditorOpen
+    // file-open bridge). Deliberately NOT gated on LSUIElement: plenty of real
+    // menu-bar apps set that yet are worth launching, so filtering it would hide
+    // apps the user wants. Mirrors what Launchpad hides.
+    private func isHelper(_ info: [String: Any]?) -> Bool {
+        guard let info else { return false }
+        if info["LSBackgroundOnly"] as? Bool == true { return true }
+        if let s = info["LSBackgroundOnly"] as? String, s == "1" || s.lowercased() == "true" { return true }
+        if info["CFBundleExecutable"] as? String == "droplet" { return true }
+        return false
+    }
+
+    // Spotlight gives us a path but not the Info.plist keys isHelper needs, so
+    // read the bundle to apply the same filter to the Spotlight source.
+    private func isHelperBundle(atPath path: String) -> Bool {
+        isHelper(Bundle(url: URL(fileURLWithPath: path))?.infoDictionary)
     }
 
     // MARK: Spotlight source
@@ -195,7 +229,8 @@ final class AppScanner {
         for i in 0..<query.resultCount {
             guard let item = query.result(at: i) as? NSMetadataItem,
                   let path = item.value(forAttribute: NSMetadataItemPathKey) as? String,
-                  spotlightAccepts(path: path) else { continue }
+                  spotlightAccepts(path: path),
+                  !isHelperBundle(atPath: path) else { continue }
 
             var name = (item.value(forAttribute: NSMetadataItemDisplayNameKey) as? String)
                 ?? URL(fileURLWithPath: path).deletingPathExtension().lastPathComponent
@@ -243,7 +278,7 @@ final class AppScanner {
     func warm() {
         DispatchQueue.global(qos: .utility).async {
             _ = self.filesystemApps(demotedBundleIds: Self.defaultDemotedBundleIds,
-                                    now: Date().timeIntervalSince1970)
+                                    hiddenBundleIds: [], now: Date().timeIntervalSince1970)
         }
         startSpotlight()
     }

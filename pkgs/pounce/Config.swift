@@ -108,8 +108,13 @@ struct QuickAnswerSettings {
 // the fix for junk like Feedback Assistant squatting the top slot. Defaults to a
 // curated set of never-launched Apple utilities (see AppScanner); set to [] to
 // disable, or list your own bundle ids (unknown ids are harmless no-ops).
+// `hideBundleIds` goes further — those apps are dropped from the list entirely,
+// on top of the built-in helper filter (AppScanner.isHelper already hides
+// background agents and droplet bridges). Use it for anything else you never
+// want to see in the palette at all.
 struct AppLauncherSettings {
     var demoteBundleIds: Set<String> = AppScanner.defaultDemotedBundleIds
+    var hideBundleIds: [String] = []
 }
 
 // The daemon's in-process global hotkey (see HotKeyManager). `key` is a named
@@ -182,6 +187,7 @@ struct Settings {
         }
         if let ap = obj["apps"] as? [String: Any] {
             if let d = ap["demoteBundleIds"] as? [String] { s.appLauncher.demoteBundleIds = Set(d) }
+            if let h = ap["hideBundleIds"] as? [String] { s.appLauncher.hideBundleIds = h }
         }
         if let hk = obj["hotkey"] as? [String: Any] {
             if let e = hk["enabled"] as? Bool { s.hotkey.enabled = e }

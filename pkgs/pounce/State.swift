@@ -207,8 +207,10 @@ final class DaemonState: ObservableObject {
         var built: [PounceItem] = []
         if launcher {
             built.append(contentsOf: lines.filter { !$0.isEmpty }.map { PounceItem.parseCommand($0) })
+            let launcherCfg = Settings.load().appLauncher
             built.append(contentsOf: AppScanner.shared.apps(
-                demotedBundleIds: Settings.load().appLauncher.demoteBundleIds))
+                demotedBundleIds: launcherCfg.demoteBundleIds,
+                hiddenBundleIds: Set(launcherCfg.hideBundleIds)))
             placeholderText = placeholder ?? "Search apps & actions..."
         } else {
             built = lines.map { PounceItem.parsePlain($0, globalIcon: icon) }
