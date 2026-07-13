@@ -22,9 +22,12 @@ enum Main {
       --cheatsheet [path]    cheatsheet overlay (default ~/.config/pounce/cheatsheet.json)
 
     focus (hush):
-      focus status              print on/off from the DoNotDisturb DB (needs Full Disk Access)
-      focus toggle              press the DND symbolic-hotkey chord (needs Accessibility)
+      focus status              print on/off from the DoNotDisturb DB
+      focus toggle              press the DND symbolic-hotkey chord
       focus on|off              deterministic: read, press only if needed, verify
+                                the grants (Accessibility + Full Disk Access) live on
+                                the signed Pounce.app; a caller without them forwards
+                                the op to the running daemon automatically
 
     housekeeping:
       --daemon                  run the resident daemon (launchd uses this; also
@@ -256,6 +259,21 @@ enum DaemonMode {
         }
         guard let payload = String(data: data, encoding: .utf8), !payload.isEmpty else {
             close(clientFD); return
+        }
+
+        // Focus ops arrive as their own one-line protocol ("FOCUS\t<op>") and
+        // run HERE, under the daemon's own TCC identity — the whole point:
+        // `pounce focus` spawned by the bar pill or a terminal is attributed
+        // to THAT app and holds no grants (Focus.swift). No UI, no main-thread
+        // hop; reply one line and hang up.
+        if payload.hasPrefix("FOCUS\t") {
+            let op = payload.dropFirst("FOCUS\t".count).trimmingCharacters(in: .whitespacesAndNewlines)
+            let r = FocusMode.perform(op)
+            let reply = r.code == 0 ? (r.out.isEmpty ? "ok" : r.out) : "err\t\(r.code)\t\(r.err)"
+            let replyData = (reply + "\n").data(using: .utf8)!
+            replyData.withUnsafeBytes { ptr in _ = write(clientFD, ptr.baseAddress!, replyData.count) }
+            close(clientFD)
+            return
         }
 
         var lines = payload.components(separatedBy: "\n")
