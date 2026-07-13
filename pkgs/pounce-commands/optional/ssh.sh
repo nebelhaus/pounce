@@ -12,9 +12,12 @@ notify() {
     osascript -e "display notification \"${1//\"/}\" with title \"SSH Hosts\""
 }
 
+# Guards answer through pounce, not a notification: for a submenu command the
+# palette is already showing a loading panel, and only a pounce call fills it.
 config="$HOME/.ssh/config"
 if [[ ! -f "$config" ]]; then
-    notify "No ~/.ssh/config found"
+    printf 'No ~/.ssh/config found\tAdd Host entries there to pick from\texclamationmark.triangle' \
+        | pounce -p "SSH Hosts" -i "terminal" >/dev/null
     exit 0
 fi
 
@@ -45,7 +48,8 @@ hosts=$(awk '
 ' "${files[@]}")
 
 if [[ -z "$hosts" ]]; then
-    notify "No Host entries in ~/.ssh/config"
+    printf 'No Host entries in ~/.ssh/config\tAdd Host blocks there to pick from\texclamationmark.triangle' \
+        | pounce -p "SSH Hosts" -i "terminal" >/dev/null
     exit 0
 fi
 

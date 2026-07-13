@@ -15,8 +15,11 @@ notify() {
     osascript -e "display notification \"${1//\"/}\" with title \"GitHub\""
 }
 
+# Guards answer through pounce, not a notification: for a submenu command the
+# palette is already showing a loading panel, and only a pounce call fills it.
 if ! command -v gh >/dev/null 2>&1; then
-    notify "gh not found — brew install gh && gh auth login"
+    printf 'gh not found\tbrew install gh && gh auth login\texclamationmark.triangle' \
+        | pounce -p "GitHub" -i "arrow.triangle.branch" >/dev/null
     exit 0
 fi
 

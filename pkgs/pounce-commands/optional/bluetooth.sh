@@ -14,8 +14,11 @@ notify() {
     osascript -e "display notification \"${1//\"/}\" with title \"Bluetooth\""
 }
 
+# Guards answer through pounce, not a notification: for a submenu command the
+# palette is already showing a loading panel, and only a pounce call fills it.
 if ! command -v blueutil >/dev/null 2>&1; then
-    notify "blueutil not found — brew install blueutil"
+    printf 'blueutil not found\tbrew install blueutil\texclamationmark.triangle' \
+        | pounce -p "Bluetooth" -i "wave.3.right" >/dev/null
     exit 0
 fi
 
@@ -61,6 +64,15 @@ while IFS= read -r line; do
         add "$name"$'\t'"✓ Connected"$'\t'"$(devicon "$name")"$'\t'"Disconnect"$'\t'"Devices"$'\t'"$addr"
     fi
 done < <(blueutil --paired 2>/dev/null)
+
+# Power is on but no devices listed: blueutil enumerates nothing when the
+# calling app (here: the pounce daemon) lacks the Bluetooth TCC grant.
+if [[ -z "$list" ]]; then
+    selected=$(printf 'No devices found\tIf devices are paired, grant Pounce Bluetooth access\tlock.shield' \
+        | pounce -p "Bluetooth" -i "wave.3.right")
+    [[ -n "$selected" ]] && open "x-apple.systempreferences:com.apple.preference.security?Privacy_Bluetooth"
+    exit 0
+fi
 
 add "Turn Bluetooth Off"$'\t\t'"power"$'\t\t'"Power"
 

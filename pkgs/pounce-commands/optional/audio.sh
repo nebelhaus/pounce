@@ -14,8 +14,11 @@ notify() {
     osascript -e "display notification \"${1//\"/}\" with title \"Audio Devices\""
 }
 
+# Guards answer through pounce, not a notification: for a submenu command the
+# palette is already showing a loading panel, and only a pounce call fills it.
 if ! command -v SwitchAudioSource >/dev/null 2>&1; then
-    notify "SwitchAudioSource not found — brew install switchaudio-osx"
+    printf 'SwitchAudioSource not found\tbrew install switchaudio-osx\texclamationmark.triangle' \
+        | pounce -p "Audio Devices" -i "hifispeaker" >/dev/null
     exit 0
 fi
 
@@ -46,7 +49,8 @@ while IFS= read -r dev; do
 done < <(SwitchAudioSource -a -t input 2>/dev/null)
 
 if [[ -z "$list" ]]; then
-    notify "No audio devices found"
+    printf 'No audio devices found\t\texclamationmark.triangle' \
+        | pounce -p "Audio Devices" -i "hifispeaker" >/dev/null
     exit 0
 fi
 

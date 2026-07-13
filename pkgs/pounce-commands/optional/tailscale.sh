@@ -19,8 +19,11 @@ TS=$(command -v tailscale)
 if [[ -z "$TS" && -x "/Applications/Tailscale.app/Contents/MacOS/Tailscale" ]]; then
     TS="/Applications/Tailscale.app/Contents/MacOS/Tailscale"
 fi
+# Guards answer through pounce, not a notification: for a submenu command the
+# palette is already showing a loading panel, and only a pounce call fills it.
 if [[ -z "$TS" ]]; then
-    notify "tailscale CLI not found — brew install tailscale (or install Tailscale.app)"
+    printf 'tailscale CLI not found\tbrew install tailscale (or install Tailscale.app)\texclamationmark.triangle' \
+        | pounce -p "Tailscale" -i "network.badge.shield.half.filled" >/dev/null
     exit 0
 fi
 

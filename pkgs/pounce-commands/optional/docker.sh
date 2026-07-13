@@ -14,8 +14,11 @@ notify() {
     osascript -e "display notification \"${1//\"/}\" with title \"Docker\""
 }
 
+# Guards answer through pounce, not a notification: for a submenu command the
+# palette is already showing a loading panel, and only a pounce call fills it.
 if ! command -v docker >/dev/null 2>&1; then
-    notify "docker not found — install Docker Desktop, OrbStack or colima"
+    printf 'docker not found\tInstall Docker Desktop, OrbStack or colima\texclamationmark.triangle' \
+        | pounce -p "Docker" -i "shippingbox.fill" >/dev/null
     exit 0
 fi
 
@@ -50,7 +53,8 @@ while IFS=$'\t' read -r name state image; do
 done < <(docker ps -a --format '{{.Names}}\t{{.State}}\t{{.Image}}' 2>/dev/null)
 
 if [[ -z "$list" ]]; then
-    notify "No containers"
+    printf 'No containers\tThe engine is running — nothing to manage yet\tshippingbox' \
+        | pounce -p "Docker" -i "shippingbox.fill" >/dev/null
     exit 0
 fi
 

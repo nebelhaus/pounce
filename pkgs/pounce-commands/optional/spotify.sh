@@ -11,8 +11,11 @@ notify() {
     osascript -e "display notification \"${1//\"/}\" with title \"Spotify\""
 }
 
+# Guards answer through pounce, not a notification: for a submenu command the
+# palette is already showing a loading panel, and only a pounce call fills it.
 if [[ ! -d "/Applications/Spotify.app" && ! -d "$HOME/Applications/Spotify.app" ]]; then
-    notify "Spotify.app not found — brew install --cask spotify"
+    printf 'Spotify.app not found\tbrew install --cask spotify\texclamationmark.triangle' \
+        | pounce -p "Spotify" -i "music.note" >/dev/null
     exit 0
 fi
 
