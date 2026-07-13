@@ -22,9 +22,14 @@ import ApplicationServices
 //   3  no Accessibility grant — refuse to press blind
 //   64 usage
 enum FocusMode {
-    // ⌃⌥⇧⌘ F13 — lockstep with modules/hush in the nebelhaus repo.
+    // ⌃⌥⇧⌘ F13 — lockstep with modules/hush in the nebelhaus repo. The
+    // binding (1966080) is only the four modifiers, but the synthetic press
+    // must ALSO carry .maskSecondaryFn: physical F-key events always have the
+    // fn bit set, and the hotkey matcher rejects an F13 chord without it.
     static let keyCode: CGKeyCode = 105
-    static let chordFlags: CGEventFlags = [.maskControl, .maskAlternate, .maskShift, .maskCommand]
+    static let chordFlags: CGEventFlags = [
+        .maskControl, .maskAlternate, .maskShift, .maskCommand, .maskSecondaryFn,
+    ]
     static let dbPath = NSString(string: "~/Library/DoNotDisturb/DB/Assertions.json").expandingTildeInPath
 
     static func run(op: String?) -> Never {
@@ -72,7 +77,10 @@ enum FocusMode {
             warn("no Accessibility grant for this binary — grant the signed Pounce.app (pounce --request-accessibility), or this call inherits nothing to press with")
             exit(3)
         }
-        guard let source = CGEventSource(stateID: .hidSystemState),
+        // .combinedSessionState, not .hidSystemState: an hidSystemState source
+        // re-derives modifier flags from the real keyboard state, stripping the
+        // synthetic chord's flags — the matcher then never sees ⌃⌥⇧⌘fn.
+        guard let source = CGEventSource(stateID: .combinedSessionState),
               let down = CGEvent(keyboardEventSource: source, virtualKey: keyCode, keyDown: true),
               let up = CGEvent(keyboardEventSource: source, virtualKey: keyCode, keyDown: false)
         else {
