@@ -36,6 +36,8 @@ enum Main {
       --copy-file <path>        copy a file to the clipboard and exit
       --request-accessibility   prompt for the Accessibility (TCC) grant
       --check-accessibility     print true/false for the grant
+      --request-bluetooth       prompt for the Bluetooth (TCC) grant
+      --check-bluetooth         print true/false for the grant
       --version                 print the version
       -h, --help                this text
 
@@ -66,6 +68,12 @@ enum Main {
             // One-shot bootstrap: fire the system "add to Accessibility" prompt.
             let opts = [kAXTrustedCheckOptionPrompt.takeUnretainedValue(): true] as CFDictionary
             print(AXIsProcessTrustedWithOptions(opts) ? "true" : "false")
+        } else if args.contains("--check-bluetooth") {
+            print(BluetoothGrant.check() ? "true" : "false")
+        } else if args.contains("--request-bluetooth") {
+            // One-shot bootstrap: fire the system Bluetooth prompt (see
+            // BluetoothGrant.swift for why blueutil can't do this itself).
+            BluetoothGrant.request()
         } else if args.contains("--daemon") {
             DaemonMode.run()
         } else {

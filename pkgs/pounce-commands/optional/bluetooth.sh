@@ -66,8 +66,15 @@ while IFS= read -r line; do
 done < <(blueutil --paired 2>/dev/null)
 
 # Power is on but no devices listed: blueutil enumerates nothing when the
-# calling app (here: the pounce daemon) lacks the Bluetooth TCC grant.
+# calling app (here: the pounce daemon) lacks the Bluetooth TCC grant — and
+# its classic-API denial is silent. Raise the real system prompt through
+# CoreBluetooth (older binaries lack the flag, hence the --help probe), then
+# rebuild the list; if that can't help, point at the Settings pane.
 if [[ -z "$list" ]]; then
+    if [[ -z "${POUNCE_BT_REQUESTED:-}" ]] && pounce --help 2>/dev/null | grep -q -- --request-bluetooth \
+        && pounce --request-bluetooth >/dev/null 2>&1; then
+        POUNCE_BT_REQUESTED=1 exec "$0" "$@"
+    fi
     selected=$(printf 'No devices found\tIf devices are paired, grant Pounce Bluetooth access\tlock.shield' \
         | pounce -p "Bluetooth" -i "wave.3.right")
     [[ -n "$selected" ]] && open "x-apple.systempreferences:com.apple.preference.security?Privacy_Bluetooth"
