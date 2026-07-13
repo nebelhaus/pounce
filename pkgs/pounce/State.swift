@@ -207,7 +207,8 @@ final class DaemonState: ObservableObject {
         var built: [PounceItem] = []
         if launcher {
             built.append(contentsOf: lines.filter { !$0.isEmpty }.map { PounceItem.parseCommand($0) })
-            built.append(contentsOf: AppScanner.shared.apps())
+            built.append(contentsOf: AppScanner.shared.apps(
+                demotedBundleIds: Settings.load().appLauncher.demoteBundleIds))
             placeholderText = placeholder ?? "Search apps & actions..."
         } else {
             built = lines.map { PounceItem.parsePlain($0, globalIcon: icon) }
@@ -217,7 +218,12 @@ final class DaemonState: ObservableObject {
         frecencyScores = Dictionary(uniqueKeysWithValues: built.map { ($0.id, frecency.score(for: $0.frecencyKey)) })
 
         itemsSorted = built.sorted { a, b in
-            (frecencyScores[a.id] ?? 0) + a.baseBoost > (frecencyScores[b.id] ?? 0) + b.baseBoost
+            let sa = (frecencyScores[a.id] ?? 0) + a.baseBoost
+            let sb = (frecencyScores[b.id] ?? 0) + b.baseBoost
+            if sa != sb { return sa > sb }
+            // Deterministic tie-break so the empty list isn't filesystem-order
+            // roulette among the many zero-score apps (case-insensitive by title).
+            return a.title.localizedCaseInsensitiveCompare(b.title) == .orderedAscending
         }
     }
 

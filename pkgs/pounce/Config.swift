@@ -103,6 +103,15 @@ struct QuickAnswerSettings {
     var currency: Bool = true
 }
 
+// App-launcher tuning. `demoteBundleIds` lists apps that should sink below
+// everything at an empty query and rely on frecency (actual use) to climb back —
+// the fix for junk like Feedback Assistant squatting the top slot. Defaults to a
+// curated set of never-launched Apple utilities (see AppScanner); set to [] to
+// disable, or list your own bundle ids (unknown ids are harmless no-ops).
+struct AppLauncherSettings {
+    var demoteBundleIds: Set<String> = AppScanner.defaultDemotedBundleIds
+}
+
 // The daemon's in-process global hotkey (see HotKeyManager). `key` is a named
 // key ("space", "return", "a"…); `modifiers` combine "cmd"/"shift"/"opt"/"ctrl".
 // Defaults to ⌘Space. Set `enabled: false` to leave the hotkey to an external
@@ -130,6 +139,7 @@ struct Settings {
 
     var windowMode: WindowMode = .standard
     var clipboard = ClipboardSettings()
+    var appLauncher = AppLauncherSettings()
     var hotkey = HotKeyConfig()
     var windows = WindowSwitcherSettings()
     var quickAnswers = QuickAnswerSettings()
@@ -169,6 +179,9 @@ struct Settings {
         }
         if let qa = obj["quickAnswers"] as? [String: Any] {
             if let c = qa["currency"] as? Bool { s.quickAnswers.currency = c }
+        }
+        if let ap = obj["apps"] as? [String: Any] {
+            if let d = ap["demoteBundleIds"] as? [String] { s.appLauncher.demoteBundleIds = Set(d) }
         }
         if let hk = obj["hotkey"] as? [String: Any] {
             if let e = hk["enabled"] as? Bool { s.hotkey.enabled = e }
