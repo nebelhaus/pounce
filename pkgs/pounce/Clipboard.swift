@@ -122,7 +122,8 @@ final class ClipboardStore {
     }
 
     // Put the entry back on the system clipboard. We bump lastChangeCount past
-    // our own write so the poller doesn't re-record it.
+    // our own write so the poller doesn't re-record it. Using an entry also
+    // promotes it to the top of the history (most-recently-used first).
     func restore(_ entry: ClipEntry) {
         let pb = NSPasteboard.general
         pb.clearContents()
@@ -131,6 +132,18 @@ final class ClipboardStore {
         case .image: if let img = image(for: entry) { pb.writeObjects([img]) }
         }
         lastChangeCount = pb.changeCount
+        promote(entry)
+    }
+
+    // Move an existing entry to the front of the history and persist. No-op if
+    // it's already on top or no longer present (e.g. evicted by the cap).
+    private func promote(_ entry: ClipEntry) {
+        queue.sync {
+            guard let idx = entriesCache.firstIndex(where: { $0.id == entry.id }), idx != 0 else { return }
+            let moved = entriesCache.remove(at: idx)
+            entriesCache.insert(moved, at: 0)
+            save()
+        }
     }
 
     // Called on a timer from the daemon.
