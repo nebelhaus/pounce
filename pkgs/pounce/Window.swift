@@ -143,7 +143,15 @@ final class PounceUI {
         state.isVisible = true
 
         window.makeKeyAndOrderFront(nil)
-        if fresh { NSApp.activate(ignoringOtherApps: true) }
+        // Re-activate on a submenu step swap too, not only on a fresh open. A
+        // two-step command presents its next step into the already-visible window
+        // (fresh == false) via a nested `pounce` invocation, but the app can lose
+        // frontmost between steps (the prior step's client process exits and macOS
+        // hands activation back to whatever was behind us) — leaving the window
+        // ordered-front yet not key, so keystrokes go to the app behind. Guarding
+        // on !NSApp.isActive restores focus on a swap without churning activation
+        // when we're already frontmost (e.g. a per-keystroke content refresh).
+        if fresh || !NSApp.isActive { NSApp.activate(ignoringOtherApps: true) }
         if let tf = state.textField { window.makeFirstResponder(tf) }
 
         // One runloop tick later SwiftUI has reconciled the new mode: size to it and
