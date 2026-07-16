@@ -28,6 +28,11 @@ struct PounceItem: Identifiable {
     let id = UUID()
     let raw: String
     let title: String
+    // An extra name to fuzzy-match against, beyond the displayed `title` — for
+    // apps whose Finder name (shown as `title`) differs from their Info.plist
+    // bundle name, so "Ableton Live 11 Suite" stays findable by typing "live"
+    // and "Visual Studio Code" by typing "code". nil for everything else.
+    let searchAlias: String?
     let subtitle: String?
     let icon: String?
     let actions: [ItemAction]
@@ -63,7 +68,7 @@ struct PounceItem: Identifiable {
 
         let group = parts.count > 4 && !parts[4].isEmpty ? parts[4] : nil
 
-        return PounceItem(raw: line, title: title, subtitle: subtitle, icon: icon,
+        return PounceItem(raw: line, title: title, searchAlias: nil, subtitle: subtitle, icon: icon,
                           actions: actions, kind: .plain, payload: line,
                           frecencyKey: title, baseBoost: 0, group: group, submenu: false)
     }
@@ -76,7 +81,7 @@ struct PounceItem: Identifiable {
         let icon = parts.count > 2 && !parts[2].isEmpty ? parts[2] : "sparkles"
         let id = parts.count > 3 ? parts[3] : title
         let submenu = parts.count > 4 && parts[4] == "1"
-        return PounceItem(raw: line, title: title, subtitle: subtitle, icon: icon,
+        return PounceItem(raw: line, title: title, searchAlias: nil, subtitle: subtitle, icon: icon,
                           actions: [ItemAction(key: "enter", label: "Run")],
                           kind: .command, payload: id,
                           frecencyKey: "cmd:\(id)", baseBoost: 0, group: nil, submenu: submenu)
@@ -87,15 +92,15 @@ struct PounceItem: Identifiable {
     // prepends it per keystroke and commit() copies `payload` instead of
     // round-tripping to a client.
     static func answer(_ a: QuickAnswer) -> PounceItem {
-        return PounceItem(raw: a.copyText, title: a.display, subtitle: a.detail,
+        return PounceItem(raw: a.copyText, title: a.display, searchAlias: nil, subtitle: a.detail,
                           icon: a.icon,
                           actions: [ItemAction(key: "enter", label: "Copy Answer")],
                           kind: .answer, payload: a.copyText,
                           frecencyKey: "answer", baseBoost: 0, group: nil, submenu: false)
     }
 
-    static func app(name: String, path: String, boost: Double) -> PounceItem {
-        return PounceItem(raw: path, title: name, subtitle: "Application",
+    static func app(name: String, path: String, boost: Double, alias: String? = nil) -> PounceItem {
+        return PounceItem(raw: path, title: name, searchAlias: alias, subtitle: "Application",
                           icon: "app:\(path)",
                           actions: [ItemAction(key: "enter", label: "Open"),
                                     ItemAction(key: "cmd", label: "Reveal in Finder")],

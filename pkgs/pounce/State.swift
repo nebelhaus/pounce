@@ -234,8 +234,11 @@ final class DaemonState: ObservableObject {
     // Combined relevance for a typed query. nil → no match.
     func matchScore(_ item: PounceItem, query: [Character]) -> Double? {
         let title = Fuzzy.score(query, item.title.lowercased())
+        // An app's bundle name (e.g. "Live" for Ableton) scores at full weight —
+        // it's a legitimate name for the app, just not the one we display.
+        let alias = item.searchAlias.flatMap { Fuzzy.score(query, $0.lowercased()) }
         let sub = item.subtitle.flatMap { Fuzzy.score(query, $0.lowercased()) }
-        let candidates = [title, sub.map { $0 * 0.5 }].compactMap { $0 }
+        let candidates = [title, alias, sub.map { $0 * 0.5 }].compactMap { $0 }
         guard let best = candidates.max() else { return nil }
         let frec = frecency(for: item)
         let normFrec = frec / (frec + 5)                 // 0..1

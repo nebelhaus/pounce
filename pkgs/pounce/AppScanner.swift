@@ -24,7 +24,10 @@ final class AppScanner {
     static let shared = AppScanner()
 
     // `helper` flags background/bridge apps that should never appear (see isHelper).
-    private struct Meta { let name: String; let bundleId: String; let ctime: Double; let helper: Bool }
+    // `name` is the Finder name (the .app folder name, what macOS shows); `alias`
+    // is the Info.plist bundle name when it differs, kept for fuzzy matching so an
+    // app is findable by either (see PounceItem.searchAlias).
+    private struct Meta { let name: String; let alias: String?; let bundleId: String; let ctime: Double; let helper: Bool }
     // A Spotlight hit kept raw (no boost baked in) so the recency boost and the
     // demotion penalty are recomputed per apps() call, against the live config
     // and clock rather than frozen at gather time. Helpers are dropped at gather
@@ -85,9 +88,9 @@ final class AppScanner {
     // apps. A freshly installed demoted app still surfaces (boost 1000 ≫ 5) until
     // that boost decays; after that only frecency can lift it back.
     private func makeApp(name: String, path: String, bundleId: String,
-                         age: Double, demoted: Set<String>) -> PounceItem {
+                         age: Double, demoted: Set<String>, alias: String? = nil) -> PounceItem {
         let b = boost(forAge: age) - (demoted.contains(bundleId) ? Self.demotionPenalty : 0)
-        return .app(name: name, path: path, boost: b)
+        return .app(name: name, path: path, boost: b, alias: alias)
     }
 
     // Stable dedupe key: resolve symlinks so a nix-store app symlinked into
@@ -167,7 +170,7 @@ final class AppScanner {
                 if meta.helper { continue }
                 if hiddenBundleIds.contains(meta.bundleId) { continue }
                 result.append(makeApp(name: meta.name, path: path, bundleId: meta.bundleId,
-                                      age: now - ctime, demoted: demotedBundleIds))
+                                      age: now - ctime, demoted: demotedBundleIds, alias: meta.alias))
             }
         }
         return result
@@ -175,13 +178,23 @@ final class AppScanner {
 
     private func metadata(for url: URL, ctime: Double) -> Meta {
         let info = Bundle(url: url)?.infoDictionary
-        let name: String = {
+        // Display the Finder name (the .app folder name) — that's what the user
+        // sees everywhere else in macOS and what they'll type. The Info.plist
+        // bundle name (CFBundleDisplayName/CFBundleName) often diverges — Ableton
+        // ships "Ableton Live 11 Suite.app" as "Live", VS Code as "Code" — which
+        // used to hide those apps from a search for their real name. Keep it as a
+        // matchable alias so both names find the app.
+        let finderName = url.deletingPathExtension().lastPathComponent
+        let bundleName: String? = {
             if let n = info?["CFBundleDisplayName"] as? String, !n.isEmpty { return n }
             if let n = info?["CFBundleName"] as? String, !n.isEmpty { return n }
-            return url.deletingPathExtension().lastPathComponent
+            return nil
         }()
+        let alias = bundleName.flatMap {
+            $0.caseInsensitiveCompare(finderName) == .orderedSame ? nil : $0
+        }
         let bundleId = (info?["CFBundleIdentifier"] as? String) ?? ""
-        return Meta(name: name, bundleId: bundleId, ctime: ctime, helper: isHelper(info))
+        return Meta(name: finderName, alias: alias, bundleId: bundleId, ctime: ctime, helper: isHelper(info))
     }
 
     // Helper/bridge apps that clutter the palette without being things you'd
