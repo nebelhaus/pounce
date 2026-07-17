@@ -150,6 +150,7 @@ enum DaemonMode {
         // while it's up dismisses it (Raycast-style).
         let presentLauncher: () -> Void = {
             if state.isVisible { state.cancel(); return }
+            let t0 = DispatchTime.now()
             let settings = Settings.load()   // re-read so config edits apply live
             Theme.current = settings.palette
             state.reset()
@@ -168,6 +169,14 @@ enum DaemonMode {
                 if let path = registry.scriptPath(for: id) { CommandSpawner.run(scriptPath: path) }
             }
             ui.present()
+            // Press→present latency on the in-process fast path, with the item
+            // count (apps + commands scanned). Diagnostic for summon-lag reports:
+            // if this line shows up when the user hits their hotkey they're on
+            // the daemon path (not an external binder spawning pounce-palette),
+            // and the ms exposes whether the synchronous registry + app scan is
+            // the cost.
+            let ms = Int((Double(DispatchTime.now().uptimeNanoseconds &- t0.uptimeNanoseconds) / 1_000_000).rounded())
+            NSLog("pounce daemon: launcher present in \(ms) ms (\(state.items.count) items)")
         }
 
         if settings.hotkey.enabled {
