@@ -5,8 +5,13 @@
 # pounce: submenu = true
 
 # Host picker over ~/.ssh/config (Include'd files too, one level deep).
-# Enter opens ssh://<host> — macOS routes that to your default terminal.
-# ⌘↵ copies the ssh command instead.
+# Enter connects; ⌘↵ copies the ssh command instead.
+#
+# WHERE "connect" opens is pluggable, so the generic library works whether
+# pounce is installed solo or inside a rice:
+#   • $POUNCE_TERMINAL_LAUNCHER set → runs `<launcher> ssh <host>` (nebelhaus
+#     points this at its zellij float-term); otherwise
+#   • open ssh://<host> — macOS routes it to your default terminal.
 
 notify() {
     osascript -e "display notification \"${1//\"/}\" with title \"SSH Hosts\""
@@ -67,12 +72,20 @@ selected=$(printf '%s\n' "$list" | pounce -p "SSH Hosts" -i "terminal")
 action=$(printf '%s' "$selected" | cut -f1)
 host=$(printf '%s' "$selected" | cut -f2)
 
+connect() { # open an interactive `ssh <host>` wherever the environment prefers
+    if [[ -n "${POUNCE_TERMINAL_LAUNCHER:-}" ]]; then
+        "$POUNCE_TERMINAL_LAUNCHER" ssh "$1"
+    else
+        open "ssh://$1"
+    fi
+}
+
 case "$action" in
     cmd)
         printf 'ssh %s' "$host" | pbcopy
         notify "Copied: ssh $host"
         ;;
     *)
-        open "ssh://$host"
+        connect "$host"
         ;;
 esac

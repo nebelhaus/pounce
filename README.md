@@ -189,7 +189,7 @@ your machine:
 | `docker` | start / stop / restart containers, tail logs | a docker engine (Docker Desktop, OrbStack, colima) |
 | `github` | jump to your PRs, review requests, issues, repos | `brew install gh` + `gh auth login` |
 | `spotify` | play / pause / skip / shuffle, copy song link | Spotify.app |
-| `ssh` | pick a host from `~/.ssh/config`, opens `ssh://` | hosts in `~/.ssh/config` |
+| `ssh` | pick a host from `~/.ssh/config`, connects (see `$POUNCE_TERMINAL_LAUNCHER`) | hosts in `~/.ssh/config` |
 | `tailscale` | connect toggle, copy your / any peer's tailnet IP | Tailscale |
 
 Enable the ones you use by id:

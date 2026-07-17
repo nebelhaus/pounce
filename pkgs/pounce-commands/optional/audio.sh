@@ -7,8 +7,15 @@
 # Audio device switcher.
 # Needs SwitchAudioSource:  brew install switchaudio-osx
 
-# The daemon's environment may not include Homebrew.
-export PATH="/opt/homebrew/bin:/usr/local/bin:$PATH"
+# External tools may live in Homebrew (solo installs) or a Nix profile
+# (nebelhaus); the daemon inherits launchd's bare PATH with neither. Prepend
+# every common package-manager bindir that exists so the tool resolves however
+# pounce was installed.
+for _d in /opt/homebrew/bin /usr/local/bin /run/current-system/sw/bin \
+          "$HOME/.nix-profile/bin" "/etc/profiles/per-user/${USER:-$(id -un)}/bin"; do
+    [ -d "$_d" ] && case ":$PATH:" in *":$_d:"*) ;; *) PATH="$_d:$PATH" ;; esac
+done
+export PATH; unset _d
 
 notify() {
     osascript -e "display notification \"${1//\"/}\" with title \"Audio Devices\""
