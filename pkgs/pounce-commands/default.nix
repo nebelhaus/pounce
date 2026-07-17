@@ -4,6 +4,12 @@
   writeShellScriptBin,
   symlinkJoin,
   pounce,
+  # Runtime deps for the optional plugins that shell out to a plain CLI. Only
+  # referenced for plugins that are actually enabled / requested, so listing
+  # them costs the default build nothing (Nix laziness → minimal closure).
+  blueutil,
+  switchaudio-osx,
+  gh,
   # Extra command directories baked into the palette's search path (after the
   # built-in set, before the user dir). Consumers layer their own commands on:
   #   pounce-commands.override { extraCommandDirs = [ ./my-commands ]; }
@@ -18,6 +24,23 @@
 let
   availablePlugins = map (n: lib.removeSuffix ".sh" n) (builtins.attrNames (builtins.readDir ./optional));
   unknownPlugins = lib.subtractLists availablePlugins plugins;
+
+  # An optional plugin that needs a plain CLI declares it here. Enabling the
+  # plugin then also drags the tool into the user environment (via
+  # propagatedUserEnvPkgs below), so on a Nix box it Just Works with no separate
+  # install — the plugin's own PATH prelude picks the tool up from the profile.
+  # Apps and daemons (Spotify, a Docker engine, tailscaled) are deliberately NOT
+  # listed: those aren't ours to provision, so the plugin guards with an install
+  # hint at runtime instead. Consumers that discover plugins another way (e.g. a
+  # symlink into ~/.config/pounce/commands) can still grab the tools via the
+  # `allPluginDeps` passthru.
+  pluginRuntimeDeps = {
+    audio = [ switchaudio-osx ];
+    bluetooth = [ blueutil ];
+    github = [ gh ];
+  };
+  enabledDeps = lib.concatMap (p: pluginRuntimeDeps.${p} or [ ]) plugins;
+  allPluginDeps = lib.unique (lib.concatLists (lib.attrValues pluginRuntimeDeps));
 
   # A command is a self-describing script: metadata lives in a comment header
   # (see commands/*.sh), not in this file. The palette discovers commands at
@@ -75,9 +98,17 @@ symlinkJoin {
   name = "pounce-commands";
   paths = [ builtinCommands paletteScript ] ++ commandBins;
 
-  # Let consumers enumerate the optional set (e.g. for an enum option type):
+  # Enabling a plugin that needs a CLI installs that CLI alongside — so
+  # `plugins = [ "bluetooth" ]` also puts blueutil in the profile, and the
+  # plugin stops guarding "not found".
+  propagatedUserEnvPkgs = enabledDeps;
+
+  # Let consumers enumerate the optional set (e.g. for an enum option type)
+  # and, for non-`plugins` discovery paths, pull the plugins' CLI deps:
   #   pounce-commands.availablePlugins
-  passthru = { inherit availablePlugins; };
+  #   pounce-commands.allPluginDeps   # every optional plugin's CLI, deduped
+  #   pounce-commands.pluginRuntimeDeps.bluetooth
+  passthru = { inherit availablePlugins pluginRuntimeDeps allPluginDeps; };
 
   meta = {
     description = "Command palette and pounce-based utilities";
