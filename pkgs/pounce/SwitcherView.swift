@@ -145,13 +145,21 @@ struct SwitcherView: View {
                 ScrollViewReader { proxy in
                     ScrollView {
                         LazyVStack(spacing: 0) {
+                            // Identity is the row POSITION, not the window. The
+                            // selection highlight is a function of position
+                            // (`i == selection`); keying rows on `w.id` instead
+                            // made SwiftUI carry a row's rendered view — highlight
+                            // and all — to the window's new slot whenever the list
+                            // reordered between opens (the just-focused window
+                            // jumps to the top on a rapid second ⌘Tab), stranding
+                            // the highlight on the wrong row. Position identity
+                            // re-evaluates `isSelected` per slot every time.
                             ForEach(state.visible.indices, id: \.self) { i in
                                 let w = state.visible[i]
                                 SwitcherRow(window: w,
                                             workspace: state.workspaces[w.id],
                                             isSelected: i == state.selection)
                                     .frame(height: SwitcherLayout.rowHeight)
-                                    .id(w.id)
                                     .onTapGesture { state.onSelect?(i) }
                             }
                         }
@@ -160,7 +168,7 @@ struct SwitcherView: View {
                     .frame(height: listHeight + 12)
                     .onChange(of: state.selection) {
                         if state.visible.indices.contains(state.selection) {
-                            proxy.scrollTo(state.visible[state.selection].id)
+                            proxy.scrollTo(state.selection)
                         }
                     }
                 }
