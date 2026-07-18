@@ -124,6 +124,26 @@ enum DaemonMode {
     static var hotKey: HotKeyManager?
     // Retained so the ⌘Tab event tap + window tracker stay alive.
     static var windowSwitcher: WindowSwitcher?
+    // Last Accessibility trust state we logged, so the watcher only emits on a
+    // change. Seeded by the startup log line below.
+    static var lastTrusted: Bool?
+    static var accessibilityTimer: Timer?
+
+    // The startup `trusted=` line is a snapshot: TCC can flip while the daemon
+    // runs (the user ticks the box in System Settings, or a `brew upgrade`
+    // reissues the adhoc signature and drops the grant). AXIsProcessTrusted() is
+    // live at every point of use, but a stale one-time log misleads anyone
+    // reading it — so poll and log the transitions, giving the log a truthful
+    // running account of the grant instead of a frozen boot-time value.
+    static func watchAccessibility() {
+        accessibilityTimer = Timer.scheduledTimer(withTimeInterval: 2, repeats: true) { _ in
+            let now = AXIsProcessTrusted()
+            if now != lastTrusted {
+                lastTrusted = now
+                NSLog("pounce daemon accessibility trusted=\(now) (changed while running)")
+            }
+        }
+    }
 
     static func run() {
         let app = NSApplication.shared
@@ -240,7 +260,12 @@ enum DaemonMode {
         }
 
         NSLog("pounce daemon started, listening on \(SocketConfig.path)")
-        NSLog("pounce daemon accessibility trusted=\(AXIsProcessTrusted())")
+        // Snapshot at boot; watchAccessibility() then logs any later transition
+        // so the grant's true running state is always in the log, not just the
+        // value that happened to hold the instant the daemon launched.
+        lastTrusted = AXIsProcessTrusted()
+        NSLog("pounce daemon accessibility trusted=\(lastTrusted!) (startup snapshot)")
+        watchAccessibility()
         app.run()
     }
 

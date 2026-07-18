@@ -4,10 +4,15 @@ import Foundation
 //
 // Two sources feed the launcher's app list, unioned so neither can hide an app:
 //
-//   1. A synchronous filesystem walk of the standard Applications dirs. Always
-//      available with zero warm-up, so the very first ⌘Space — before Spotlight
-//      has answered, or on a Mac with indexing disabled — still lists every app
-//      installed the normal way.
+//   1. A filesystem walk of the standard Applications dirs. Its result is cached
+//      as an in-memory snapshot (fsApps) that a background task refreshes — so
+//      the keystroke path (apps(), called on every ⌘Space) reads the snapshot
+//      instantly instead of paying a synchronous directory walk + stat storm
+//      before the window paints. The very first call, before warm() has run,
+//      falls back to a one-off synchronous walk so nothing is ever blank; every
+//      call after that is served from the snapshot. New/removed apps land within
+//      the refresh interval, and the live Spotlight query below catches them
+//      faster still.
 //
 //   2. A live Spotlight index (NSMetadataQuery) of every app bundle the system
 //      knows, wherever it lives on disk. This is what makes pounce match
@@ -33,10 +38,18 @@ final class AppScanner {
     // and clock rather than frozen at gather time. Helpers are dropped at gather
     // time (see rebuildSpotlight), so a SpotApp is always a launchable app.
     private struct SpotApp { let name: String; let path: String; let bundleId: String; let added: Double }
+    // A launchable filesystem app, helper-filtered at gather time and kept
+    // config-independent (no boost/demotion baked in, hide list not yet applied)
+    // so a single snapshot serves every apps() call — the recency boost, the
+    // demotion penalty, and the per-config hide filter are all recomputed at
+    // read time against the live clock and config.
+    private struct FSApp { let name: String; let path: String; let alias: String?; let bundleId: String; let ctime: Double }
 
     private var cache: [String: Meta] = [:]           // path -> metadata (fs scan)
+    private var fsApps: [FSApp]? = nil                 // nil until the first walk
     private var spotlight: [SpotApp]? = nil            // nil until the first gather
     private var query: NSMetadataQuery?
+    private var refreshTimer: Timer?
     private let lock = NSLock()
 
     // Rarely-launched apps get pushed below everything at an empty query, so they
@@ -105,8 +118,20 @@ final class AppScanner {
     func apps(demotedBundleIds: Set<String> = defaultDemotedBundleIds,
               hiddenBundleIds: Set<String> = []) -> [PounceItem] {
         let now = Date().timeIntervalSince1970
-        let fs = filesystemApps(demotedBundleIds: demotedBundleIds,
-                                hiddenBundleIds: hiddenBundleIds, now: now)
+
+        // Read the cached snapshot; only the very first call (before warm() has
+        // populated it) pays the synchronous walk, so no ⌘Space blanks the list.
+        lock.lock(); var snapshot = fsApps; lock.unlock()
+        if snapshot == nil {
+            rebuildFilesystem()
+            lock.lock(); snapshot = fsApps; lock.unlock()
+        }
+        let fs: [PounceItem] = (snapshot ?? [])
+            .filter { !hiddenBundleIds.contains($0.bundleId) }
+            .map {
+                makeApp(name: $0.name, path: $0.path, bundleId: $0.bundleId,
+                        age: now - $0.ctime, demoted: demotedBundleIds, alias: $0.alias)
+            }
 
         lock.lock(); let spot = spotlight; lock.unlock()
         let spotItems: [PounceItem] = (spot ?? [])
@@ -130,13 +155,18 @@ final class AppScanner {
         return order.compactMap { byKey[$0] }
     }
 
-    private func filesystemApps(demotedBundleIds: Set<String>,
-                                hiddenBundleIds: Set<String>, now: Double) -> [PounceItem] {
+    // Walk the Applications dirs and refresh the fsApps snapshot. Runs off the
+    // keystroke path (warm() at startup, a background timer thereafter, and the
+    // one-off fallback in apps() before the first refresh lands). The Info.plist
+    // metadata cache (cache[path], keyed by path+ctime) means a steady-state
+    // walk only stats each bundle, never re-reads a plist. The FS I/O is done
+    // outside the lock; the lock is only taken to snapshot/publish the caches.
+    private func rebuildFilesystem() {
         let fm = FileManager.default
         var seen = Set<String>()
-        var result: [PounceItem] = []
+        var result: [FSApp] = []
 
-        lock.lock(); defer { lock.unlock() }
+        lock.lock(); var meta = cache; lock.unlock()
 
         for dir in searchDirs {
             let keys: [URLResourceKey] = [.isDirectoryKey, .creationDateKey]
@@ -158,22 +188,22 @@ final class AppScanner {
                 let ctime = (try? url.resourceValues(forKeys: [.creationDateKey]))?
                     .creationDate?.timeIntervalSince1970 ?? 0
 
-                let meta: Meta
-                if let m = cache[path], m.ctime == ctime {
-                    meta = m
+                let m: Meta
+                if let cached = meta[path], cached.ctime == ctime {
+                    m = cached
                 } else {
-                    meta = metadata(for: url, ctime: ctime)
-                    cache[path] = meta
+                    m = metadata(for: url, ctime: ctime)
+                    meta[path] = m
                 }
-                // Drop background/bridge helpers (see isHelper) and anything the
-                // user pinned to the hide list — neither is a launchable target.
-                if meta.helper { continue }
-                if hiddenBundleIds.contains(meta.bundleId) { continue }
-                result.append(makeApp(name: meta.name, path: path, bundleId: meta.bundleId,
-                                      age: now - ctime, demoted: demotedBundleIds, alias: meta.alias))
+                // Drop background/bridge helpers (see isHelper) — never a
+                // launchable target. The per-config hide list is applied later,
+                // at apps() read time, so it can change without a re-walk.
+                if m.helper { continue }
+                result.append(FSApp(name: m.name, path: path, alias: m.alias,
+                                    bundleId: m.bundleId, ctime: ctime))
             }
         }
-        return result
+        lock.lock(); cache = meta; fsApps = result; lock.unlock()
     }
 
     private func metadata(for url: URL, ctime: Double) -> Meta {
@@ -286,13 +316,18 @@ final class AppScanner {
         }
     }
 
-    // Warm both sources at startup: prime the filesystem name/bundle-id cache off
-    // the main thread and kick off the live Spotlight query.
+    // Warm both sources at startup: build the filesystem snapshot off the main
+    // thread and kick off the live Spotlight query. A repeating timer then keeps
+    // the snapshot fresh so newly installed apps appear even if Spotlight is
+    // disabled — the walk always runs in the background, never on a keystroke.
     func warm() {
-        DispatchQueue.global(qos: .utility).async {
-            _ = self.filesystemApps(demotedBundleIds: Self.defaultDemotedBundleIds,
-                                    hiddenBundleIds: [], now: Date().timeIntervalSince1970)
-        }
+        DispatchQueue.global(qos: .utility).async { self.rebuildFilesystem() }
         startSpotlight()
+        DispatchQueue.main.async {
+            guard self.refreshTimer == nil else { return }
+            self.refreshTimer = Timer.scheduledTimer(withTimeInterval: 60, repeats: true) { _ in
+                DispatchQueue.global(qos: .utility).async { self.rebuildFilesystem() }
+            }
+        }
     }
 }
