@@ -158,6 +158,9 @@ final class WindowSwitcher {
     // False when there's nothing to switch between — the trigger passes through
     // to the stock switcher rather than dying on a swallowed key.
     private func begin(reverse: Bool) -> Bool {
+        // Pin row 0 to the truly-active window before snapshotting, so a rapid
+        // second trigger doesn't race the async focus/refresh from the last one.
+        tracker.stampFrontmost()
         let windows = tracker.orderedWindows()
         guard !windows.isEmpty else { return false }
 

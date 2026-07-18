@@ -71,11 +71,32 @@ final class WindowTracker {
     // since the daemon started sink to the bottom (stable by title so the tail
     // doesn't shuffle between opens).
     func orderedWindows() -> [WindowInfo] {
-        cached.sorted { a, b in
+        let sorted = cached.sorted { a, b in
             let sa = stamps[a.id] ?? 0, sb = stamps[b.id] ?? 0
             if sa != sb { return sa > sb }
             return a.title < b.title
         }
+        // Collapse to one row per CGWindowID (keep the highest-stamped, i.e.
+        // first after the sort). Two AX elements can briefly map to the same id
+        // while an app is mid-transition — and the HUD keys rows on `.id(w.id)`,
+        // so a duplicate would collide SwiftUI's identity and smear the
+        // selection highlight onto the wrong row.
+        var seen = Set<CGWindowID>()
+        return sorted.filter { seen.insert($0.id).inserted }
+    }
+
+    // Force the currently-frontmost app's focused window to the top of the MRU
+    // order, synchronously. The async focus path (AeroSpace subprocess +
+    // NSWorkspace/AX activation notifications) may not have re-stamped the last
+    // switch's target yet, so a rapid second ⌘Tab would otherwise sort against a
+    // half-settled snapshot and leave the just-activated window somewhere below
+    // row 0 — making it the auto-selected row 1 and looking "stuck" as you tab.
+    // The live frontmost app is the synchronous source of truth for row 0.
+    func stampFrontmost() {
+        guard let app = NSWorkspace.shared.frontmostApplication,
+              app.processIdentifier != ProcessInfo.processInfo.processIdentifier
+        else { return }
+        touchFocusedWindow(pid: app.processIdentifier)
     }
 
     // Focus a window: unminimize via AX when needed, otherwise prefer
