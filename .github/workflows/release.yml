@@ -1,6 +1,7 @@
 name: release
 
-# Tag vX.Y.Z -> GitHub release with a source tarball -> Homebrew tap bump.
+# Tag v<date> (CalVer, e.g. v2026.07.18) -> GitHub release with a source tarball
+# -> Homebrew tap bump.
 #
 # The tarball is the repo at the tag PLUS Palette+nebelung.generated.swift
 # rendered from the PINNED nebelung input, so a Homebrew build gets the exact
