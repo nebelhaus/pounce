@@ -21,6 +21,14 @@ enum Pasteboard {
         }
         pb.writeObjects([item])
     }
+
+    // Replace the pasteboard with a plain string — used by `pounce --transform`
+    // to stage the filtered text before synthesizing ⌘V back into the app.
+    static func copyString(_ s: String) {
+        let pb = NSPasteboard.general
+        pb.clearContents()
+        pb.setString(s, forType: .string)
+    }
 }
 
 // MARK: - Auto-paste
@@ -29,12 +37,20 @@ enum Pasteboard {
 // process to hold an Accessibility grant (CGEvent posting is gated by TCC);
 // callers must check AXIsProcessTrusted() first.
 enum Paste {
+    private static let kVK_ANSI_C: CGKeyCode = 0x08
     private static let kVK_ANSI_V: CGKeyCode = 0x09
 
-    static func sendCommandV() {
+    static func sendCommandV() { sendCommand(kVK_ANSI_V) }
+
+    // Synthesize ⌘C to grab the frontmost app's current selection onto the
+    // pasteboard — the read half of `pounce --transform` (same TCC gate as
+    // sendCommandV: the caller must hold Accessibility).
+    static func sendCommandC() { sendCommand(kVK_ANSI_C) }
+
+    private static func sendCommand(_ key: CGKeyCode) {
         let src = CGEventSource(stateID: .combinedSessionState)
-        let down = CGEvent(keyboardEventSource: src, virtualKey: kVK_ANSI_V, keyDown: true)
-        let up = CGEvent(keyboardEventSource: src, virtualKey: kVK_ANSI_V, keyDown: false)
+        let down = CGEvent(keyboardEventSource: src, virtualKey: key, keyDown: true)
+        let up = CGEvent(keyboardEventSource: src, virtualKey: key, keyDown: false)
         down?.flags = .maskCommand
         up?.flags = .maskCommand
         down?.post(tap: .cghidEventTap)

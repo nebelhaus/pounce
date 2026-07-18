@@ -29,6 +29,12 @@ enum Main {
                                 the signed Pounce.app; a caller without them forwards
                                 the op to the running daemon automatically
 
+    selection:
+      --transform <filter>      act on the current selection: copy it (⌘C), pipe
+                                the text through the shell <filter>, paste back
+                                (⌘V). e.g. --transform 'tr "[:lower:]" "[:upper:]"'.
+                                Forwarded to the daemon, which holds the grant.
+
     housekeeping:
       --daemon                  run the resident daemon (launchd uses this; also
                                 hosts the MRU window switcher when config.json
@@ -59,6 +65,11 @@ enum Main {
             FocusMode.run(op: args.count >= 3 ? args[2] : nil)
         } else if let i = args.firstIndex(of: "--copy-file"), i + 1 < args.count {
             CopyFileMode.run(path: args[i + 1])
+        } else if let i = args.firstIndex(of: "--transform"), i + 1 < args.count {
+            // Act on the current selection: ⌘C → pipe through the shell filter
+            // → ⌘V. Forwarded to the daemon (which holds Accessibility) like
+            // `focus`. See Transform.swift.
+            TransformMode.run(filter: args[i + 1])
         } else if args.contains("--check-accessibility") {
             // Silent trust check for scripted verification. AXIsProcessTrusted
             // reflects THIS binary's code identity, so run it from the signed copy
@@ -287,6 +298,22 @@ enum DaemonMode {
             let op = payload.dropFirst("FOCUS\t".count).trimmingCharacters(in: .whitespacesAndNewlines)
             let r = FocusMode.perform(op)
             let reply = r.code == 0 ? (r.out.isEmpty ? "ok" : r.out) : "err\t\(r.code)\t\(r.err)"
+            let replyData = (reply + "\n").data(using: .utf8)!
+            replyData.withUnsafeBytes { ptr in _ = write(clientFD, ptr.baseAddress!, replyData.count) }
+            close(clientFD)
+            return
+        }
+
+        // Transform-selection ops arrive as "TRANSFORM\t<shell filter>" and,
+        // like FOCUS, run HERE under the daemon's own TCC identity (only the
+        // signed daemon holds the Accessibility grant that lets ⌘C/⌘V post).
+        // No UI, no main-thread hop — every step in perform() is thread-safe;
+        // reply one line and hang up. The palette window is already hidden and
+        // focus handed back to the source app by the time this fires.
+        if payload.hasPrefix("TRANSFORM\t") {
+            let filter = String(payload.dropFirst("TRANSFORM\t".count)).trimmingCharacters(in: .newlines)
+            let r = TransformMode.perform(filter: filter)
+            let reply = r.code == 0 ? "ok" : "err\t\(r.code)\t\(r.err)"
             let replyData = (reply + "\n").data(using: .utf8)!
             replyData.withUnsafeBytes { ptr in _ = write(clientFD, ptr.baseAddress!, replyData.count) }
             close(clientFD)
