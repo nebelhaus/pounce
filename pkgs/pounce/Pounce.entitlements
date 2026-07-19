@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<!-- Hardened runtime (required for notarization) denies camera access unless
+	     the binary carries this exception. Pounce's `camera` peek command uses
+	     AVCaptureDevice (see Camera.swift). Bluetooth needs no entitlement here —
+	     it is gated by TCC via NSBluetoothAlwaysUsageDescription in Info.plist. -->
+	<key>com.apple.security.device.camera</key>
+	<true/>
+</dict>
+</plist>
