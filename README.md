@@ -121,9 +121,34 @@ Common flags:
 | `--max-empty <n>` | how many rows to show before the user types |
 | `--clipboard` / `--emoji` / `--screenshots` / `--camera` | the built-in native modes |
 | `--cheatsheet [path]` | overlay a cheatsheet (JSON) |
+| `--transform '<filter>'` | act on the current selection: copy it (⌘C), pipe the text through the shell `<filter>`, paste back (⌘V) — e.g. `--transform 'tr "[:lower:]" "[:upper:]"'`. Forwarded to the daemon, which holds the grant. |
+| `focus <op>` | Focus/DND (hush): `focus status\|toggle\|on\|off`, forwarded to the daemon |
 | `--copy-file <path>` | copy a file (contents) to the clipboard |
-| `--request-accessibility` / `--check-accessibility` | manage the TCC grant |
+| `--daemon` | run the resident daemon (what `launchd` starts; also hosts the ⌘Tab window switcher) |
+| `--request-accessibility` / `--check-accessibility` | manage the Accessibility (TCC) grant |
+| `--request-bluetooth` / `--check-bluetooth` | manage the Bluetooth (TCC) grant |
+| `--version` | print the version |
 | `-h`, `--help` | usage (the full flag list) |
+
+## quick answers (inline calculator)
+
+Type an expression-shaped query into the launcher and pounce answers it **right
+in the palette** — pinned as the first row — instead of fuzzy-matching it against
+your apps and commands. There's no trigger prefix: a query either parses as an
+answer or it stays an ordinary search. Hit ⏎ to copy the result.
+
+| you type | you get |
+|----------|---------|
+| `2*847` | **1,694** — arithmetic, parentheses, `pi`/`tau`, functions |
+| `72 f in c` | **22.2 °C** — units (length, mass, temperature, …) |
+| `100 usd in eur` | live currency, from offline ECB rates |
+| `14:00 utc in pst` | timezone conversion |
+
+Currency is the one engine that touches the network: it refreshes European
+Central Bank reference rates in the background (pounce's only network call) and
+answers from an in-memory cache, so a keystroke never blocks on I/O. It's **off
+by default** — turn it on with `"quickAnswers": { "currency": true }` in
+`config.json` (see below).
 
 ## writing a command (plugin)
 
@@ -215,9 +240,10 @@ network=$(list_networks | pounce -p "WiFi network:")
 [ -n "$network" ] && join_network "$network"
 ```
 
-The batteries-included set (wifi, ports, clipboard, emoji, screenshots,
-brew-services, lock, force-quit, …) all live in `commands/` as worked examples —
-copy one and go.
+The batteries-included set (wifi, clipboard, emoji, screenshots, brew-services,
+lock, force-quit, …) all live in `commands/` as worked examples — copy one and
+go. (The `ports` command is the exception: it ships from `pkgs/pounce/ports`,
+installed as `$out/bin/ports`, not from `pkgs/pounce-commands/commands/`.)
 
 ## configuration
 
@@ -242,7 +268,15 @@ optional and falls back to a default.
   "clipboard": {
     "enabled": true,
     "maxEntries": 200,
-    "autoPaste": false      // synthesize ⌘V into the prior app (needs Accessibility)
+    "autoPaste": false,     // synthesize ⌘V into the prior app (needs Accessibility)
+    "blacklistBundleIds": [] // apps whose copies are never recorded (password managers…)
+  },
+  "quickAnswers": {
+    "currency": false       // enable the currency engine (its only network call — see above)
+  },
+  "apps": {
+    "demoteBundleIds": [],  // apps ranked lower in the launcher (bundle IDs)
+    "hideBundleIds": []     // apps hidden from the launcher entirely (bundle IDs)
   }
 }
 ```
