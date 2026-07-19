@@ -72,6 +72,13 @@ final class DaemonState: ObservableObject {
 
     var onCommit: ((Commit) -> Void)?
     var onResize: (() -> Void)?       // content height changed; window should refit
+    // When the view knows its exact target height (the launcher computes it from
+    // row metrics — see ContentView.contentHeight), it stashes it here right
+    // before calling onResize so the window can resize to it synchronously, in
+    // the same turn, without measuring hosting.fittingSize (stale same-turn on
+    // Tahoe). nil → the window measures (command/cheatsheet views). resizeToFit
+    // consumes and clears it.
+    var pendingContentHeight: CGFloat?
     weak var textField: NSTextField?
 
     func reset() {

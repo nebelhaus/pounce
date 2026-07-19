@@ -31,6 +31,7 @@ final class PounceUI {
 
     private var lingerItem: DispatchWorkItem?
     private var spinnerItem: DispatchWorkItem?
+    private var resizePending = false   // coalesces a keystroke's onResize burst into one deferred refit
     var resultSink: ((String) -> Void)?
 
     // The app that was frontmost when the window first appeared — captured before
@@ -78,14 +79,29 @@ final class PounceUI {
 
         state.onCommit = { [weak self] commit in self?.handleCommit(commit) }
         state.onResize = { [weak self] in
-            // Resize in the SAME runloop turn as the content change. Forcing
-            // layout makes fittingSize current immediately, so the window and the
-            // SwiftUI content never composite at mismatched sizes — that one-frame
-            // mismatch (small content inside the still-tall window/blur) is the
-            // flash you see when the query filters the list, worst on 0→1 letters.
             guard let self = self else { return }
-            self.hosting.layoutSubtreeIfNeeded()
-            self.resizeToFit()
+            // Fast path — the launcher hands us its EXACT height
+            // (state.pendingContentHeight, computed from row metrics) right before
+            // this call, so we resize synchronously in the SAME runloop turn as the
+            // content change. Window and content then composite together in one
+            // clean snap. We deliberately do NOT measure hosting.fittingSize here:
+            // on macOS 26 (Tahoe) it reads stale within the turn, and measuring
+            // then correcting on the next tick is the shrink-then-grow "flash
+            // closed/open" seen while typing to filter.
+            if self.state.pendingContentHeight != nil {
+                self.resizeToFit()
+                return
+            }
+            // Slow path — no exact height (a command/cheatsheet mode swap): measure
+            // on the next tick, after SwiftUI reconciles the new mode. Coalesce a
+            // burst of onChange calls into that single pass.
+            guard !self.resizePending else { return }
+            self.resizePending = true
+            DispatchQueue.main.async {
+                self.resizePending = false
+                self.hosting.layoutSubtreeIfNeeded()
+                self.resizeToFit()
+            }
         }
 
         NotificationCenter.default.addObserver(
@@ -175,8 +191,20 @@ final class PounceUI {
     // its content in present() and this reveals it, so the change is one clean cut.
     func resizeToFit() {
         guard window.isVisible else { return }
-        hosting.layoutSubtreeIfNeeded()
-        let h = hosting.fittingSize.height
+        // Prefer the view's EXACT computed height (the launcher stashes it in
+        // state.pendingContentHeight); only fall back to measuring the hosting
+        // view when no exact height is on offer (command/cheatsheet views). The
+        // exact path needs no layout pass and — crucially — no fittingSize read,
+        // which is what lets the launcher resize correctly in the same turn on
+        // Tahoe. Consume it so a later measure-path call doesn't reuse a stale one.
+        let h: CGFloat
+        if let exact = state.pendingContentHeight {
+            state.pendingContentHeight = nil
+            h = exact
+        } else {
+            hosting.layoutSubtreeIfNeeded()
+            h = hosting.fittingSize.height
+        }
         let w = state.targetWidth
         if h > 1, abs(h - window.frame.height) > 0.5 || abs(w - window.frame.width) > 0.5 {
             let oldTop = window.frame.maxY

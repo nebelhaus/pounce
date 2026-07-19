@@ -119,6 +119,33 @@ struct ContentView: View {
         return CGFloat(cap) * rowHeight + CGFloat(headers) * GroupHeaderRow.height + answerExtra
     }
 
+    static let dividerHeight: CGFloat = 1
+    static let actionBarHeight: CGFloat = 44
+
+    // The launcher panel's EXACT height, mirroring launcherBody's layout 1:1 so
+    // the window can size to it without measuring the hosting view (see
+    // PounceUI.resizeToFit — measuring is stale in the same runloop turn on
+    // Tahoe, which is what made filtering flash). Header, then — when the list
+    // shows — a divider + the scroll area (listHeight + its 12pt vertical
+    // padding), then — when a row is selected — a divider + the action bar. The
+    // divider and action-bar frames below are pinned to these same constants;
+    // keep the two in lockstep.
+    var contentHeight: CGFloat {
+        var h = state.metrics.headerHeight
+        if !visible.isEmpty {
+            h += Self.dividerHeight + listHeight + 12
+            if selectedItem != nil { h += Self.dividerHeight + Self.actionBarHeight }
+        }
+        return h
+    }
+
+    // Stash the exact height for the window, then ask it to refit. Called from the
+    // launcher's onChange hooks so every filter/reveal resizes in one clean snap.
+    func requestResize() {
+        state.pendingContentHeight = contentHeight
+        state.onResize?()
+    }
+
     var body: some View {
         Group {
             if state.isLoading {
@@ -170,7 +197,7 @@ struct ContentView: View {
             .frame(height: state.metrics.headerHeight)
 
             if !visible.isEmpty {
-                Divider().background(Theme.surface1.opacity(0.3))
+                Divider().frame(height: Self.dividerHeight).background(Theme.surface1.opacity(0.3))
 
                 ScrollViewReader { proxy in
                     ScrollView {
@@ -204,9 +231,9 @@ struct ContentView: View {
                 }
 
                 if let item = selectedItem {
-                    Divider().background(Theme.surface1.opacity(0.3))
+                    Divider().frame(height: Self.dividerHeight).background(Theme.surface1.opacity(0.3))
                     ActionBar(actions: item.actions)
-                        .frame(height: 44)
+                        .frame(height: Self.actionBarHeight)
                 }
             }
         }
@@ -215,12 +242,12 @@ struct ContentView: View {
         .background(Theme.base.opacity(0.55))
         .clipShape(RoundedRectangle(cornerRadius: 16))
         .onChange(of: state.query) { selectedIndex = 0; revealed = false }
-        .onChange(of: visible.count) { state.onResize?() }
-        .onChange(of: renderRows.count) { state.onResize?() }
+        .onChange(of: visible.count) { requestResize() }
+        .onChange(of: renderRows.count) { requestResize() }
         // The answer card can appear/vanish while the row COUNT stays equal
         // (its slot swaps with a match) — that still changes the height.
-        .onChange(of: hasAnswer) { state.onResize?() }
-        .onChange(of: state.requestID) { selectedIndex = 0; revealed = false; state.onResize?() }
+        .onChange(of: hasAnswer) { requestResize() }
+        .onChange(of: state.requestID) { selectedIndex = 0; revealed = false; requestResize() }
     }
 
     func select(action: String) {
