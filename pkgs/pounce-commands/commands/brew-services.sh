@@ -7,6 +7,17 @@
 # Brew Services Manager
 # Lists all brew services with status and allows start/stop/restart
 
+# `brew` lives in Homebrew's bindir (/opt/homebrew/bin on Apple Silicon,
+# /usr/local/bin on Intel); the daemon inherits launchd's bare PATH without it,
+# so `brew` fails to resolve and this menu comes up empty (stuck on the loading
+# skeleton). Prepend every common package-manager bindir that exists — same
+# idiom the optional plugins use.
+for _d in /opt/homebrew/bin /usr/local/bin /run/current-system/sw/bin \
+          "$HOME/.nix-profile/bin" "/etc/profiles/per-user/${USER:-$(id -un)}/bin"; do
+    [ -d "$_d" ] && case ":$PATH:" in *":$_d:"*) ;; *) PATH="$_d:$PATH" ;; esac
+done
+export PATH; unset _d
+
 # Get list of services with status
 get_services() {
     brew services list 2>/dev/null | tail -n +2 | while read -r line; do
