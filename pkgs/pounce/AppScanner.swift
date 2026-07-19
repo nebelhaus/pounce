@@ -4,7 +4,9 @@ import Foundation
 //
 // Two sources feed the launcher's app list, unioned so neither can hide an app:
 //
-//   1. A filesystem walk of the standard Applications dirs. Its result is cached
+//   1. A filesystem walk of the standard Applications dirs, plus a short
+//      allowlist of first-class system apps that live elsewhere (systemAppPaths
+//      — Finder, under /System/Library/CoreServices). Its result is cached
 //      as an in-memory snapshot (fsApps) that a background task refreshes — so
 //      the keystroke path (apps(), called on every ⌘Space) reads the snapshot
 //      instantly instead of paying a synchronous directory walk + stat storm
@@ -89,6 +91,19 @@ final class AppScanner {
         return dirs
     }()
 
+    // First-class system apps that live outside the Applications dirs and would
+    // otherwise be missed by BOTH sources: the walk never descends
+    // /System/Library, and the Spotlight source drops anything under /library/
+    // (see spotlightAccepts) to bury framework-internal helper bundles. Finder
+    // is the one CoreServices app worth launching by name — a palette that can't
+    // open Finder is broken — while the ~100 UIElement/background agents beside
+    // it are exactly the clutter that guard exists to keep out. Listed by exact
+    // path (ABI-stable across releases); each still passes through the normal
+    // metadata read + isHelper filter, so a helper here is still dropped.
+    static let systemAppPaths: [String] = [
+        "/System/Library/CoreServices/Finder.app",
+    ]
+
     // Boost freshly-installed apps so they surface at the top, decaying over a week.
     private func boost(forAge age: Double) -> Double {
         let week = 7.0 * 86400
@@ -168,6 +183,33 @@ final class AppScanner {
 
         lock.lock(); var meta = cache; lock.unlock()
 
+        // Fold one .app bundle into the result, reusing cached Info.plist
+        // metadata when the bundle's ctime is unchanged (a steady-state walk
+        // only stats, never re-reads a plist). Shared by the Applications walk
+        // and the systemAppPaths pass below. Drops background/bridge helpers
+        // (see isHelper) — never a launchable target; the per-config hide list
+        // is applied later, at apps() read time, so it can change without a
+        // re-walk. Mutates the enclosing seen/result/meta.
+        func consider(_ url: URL) {
+            let path = url.path
+            if seen.contains(path) { return }
+            seen.insert(path)
+
+            let ctime = (try? url.resourceValues(forKeys: [.creationDateKey]))?
+                .creationDate?.timeIntervalSince1970 ?? 0
+
+            let m: Meta
+            if let cached = meta[path], cached.ctime == ctime {
+                m = cached
+            } else {
+                m = metadata(for: url, ctime: ctime)
+                meta[path] = m
+            }
+            if m.helper { return }
+            result.append(FSApp(name: m.name, path: path, alias: m.alias,
+                                bundleId: m.bundleId, ctime: ctime))
+        }
+
         for dir in searchDirs {
             let keys: [URLResourceKey] = [.isDirectoryKey, .creationDateKey]
             guard let en = fm.enumerator(at: dir, includingPropertiesForKeys: keys,
@@ -181,28 +223,16 @@ final class AppScanner {
             }
             while let url = en.nextObject() as? URL {
                 guard url.pathExtension == "app" else { continue }
-                let path = url.path
-                if seen.contains(path) { continue }
-                seen.insert(path)
-
-                let ctime = (try? url.resourceValues(forKeys: [.creationDateKey]))?
-                    .creationDate?.timeIntervalSince1970 ?? 0
-
-                let m: Meta
-                if let cached = meta[path], cached.ctime == ctime {
-                    m = cached
-                } else {
-                    m = metadata(for: url, ctime: ctime)
-                    meta[path] = m
-                }
-                // Drop background/bridge helpers (see isHelper) — never a
-                // launchable target. The per-config hide list is applied later,
-                // at apps() read time, so it can change without a re-walk.
-                if m.helper { continue }
-                result.append(FSApp(name: m.name, path: path, alias: m.alias,
-                                    bundleId: m.bundleId, ctime: ctime))
+                consider(url)
             }
         }
+
+        // Supplement the walk with the curated system apps (Finder et al.) that
+        // live outside searchDirs. Same metadata read + helper filter.
+        for path in Self.systemAppPaths where fm.fileExists(atPath: path) {
+            consider(URL(fileURLWithPath: path))
+        }
+
         lock.lock(); cache = meta; fsApps = result; lock.unlock()
     }
 
