@@ -67,6 +67,25 @@ let
       ${lib.concatMapStrings (p: ''
         install -m555 ${./optional}/${p}.sh $out/share/pounce/commands/
       '') plugins}
+
+      # System Settings deeplinks: one top-level command per pane, generated
+      # from settings-panes.tsv (real ExtensionKit bundle ids — see the file's
+      # header). `open x-apple.systempreferences:<id>` jumps straight to a pane,
+      # so "Accessibility"/"Displays"/… are first-class palette items. Skips
+      # comments/blank lines; slug is the lowercased, hyphenated display name.
+      while IFS=$'\t' read -r bid name icon; do
+        case "$bid" in ""|"#"*) continue ;; esac
+        slug=$(printf '%s' "$name" | tr '[:upper:]' '[:lower:]' | sed -E 's/[^a-z0-9]+/-/g; s/^-+//; s/-+$//')
+        dst="$out/share/pounce/commands/settings-$slug.sh"
+        {
+          printf '#!/bin/bash\n'
+          printf '# pounce: name = %s\n' "$name"
+          printf '# pounce: description = System Settings\n'
+          printf '# pounce: icon = %s\n' "$icon"
+          printf 'open "x-apple.systempreferences:%s"\n' "$bid"
+        } > "$dst"
+        chmod 555 "$dst"
+      done < ${./settings-panes.tsv}
     '';
 
   builtinDir = "${builtinCommands}/share/pounce/commands";

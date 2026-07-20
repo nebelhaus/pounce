@@ -1,0 +1,67 @@
+# System Settings deeplinks. Each row becomes ONE top-level palette command
+# (settings-<slug>.sh) that opens x-apple.systempreferences:<bundle-id> — so
+# typing e.g. "Accessibility" jumps straight to that pane. Generated at build
+# time by default.nix; there is no per-pane script to maintain, only this table.
+#
+# Columns (tab-separated):  bundle-id  <TAB>  Display name  <TAB>  SF Symbol
+#
+# Every bundle id below is a REAL settings extension, not a guess: macOS ships
+# each pane as an ExtensionKit bundle that opts into the URL scheme. To refresh
+# this list on a new macOS (new panes, renamed ids), dump the authoritative set
+# and reconcile against the names/icons here:
+#
+#   for d in /System/Library/ExtensionKit/Extensions/*.appex; do
+#     p="$d/Contents/Info.plist"
+#     [ "$(/usr/libexec/PlistBuddy -c \
+#         'Print :EXAppExtensionAttributes:EXExtensionPointIdentifier' "$p" \
+#         2>/dev/null)" = com.apple.Settings.extension.ui ] || continue
+#     [ "$(/usr/libexec/PlistBuddy -c \
+#         'Print :EXAppExtensionAttributes:SettingsExtensionAttributes:allowsXAppleSystemPreferencesURLScheme' \
+#         "$p" 2>/dev/null)" = true ] || continue
+#     /usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$p"
+#   done | sort
+#
+# The bundle ids are stable across releases (verified on macOS 26); names/icons
+# are hand-curated for the palette. Lines starting with # and blank lines are
+# skipped. Users can shadow or add their own via ~/.config/pounce/commands.
+#
+com.apple.Accessibility-Settings.extension	Accessibility	accessibility
+com.apple.AirDrop-Handoff-Settings.extension	AirDrop & Handoff	dot.radiowaves.right
+com.apple.SystemProfiler.AboutExtension	About	desktopcomputer
+com.apple.Appearance-Settings.extension	Appearance	paintpalette
+com.apple.systempreferences.AppleIDSettings	Apple Account	person.crop.circle
+com.apple.Battery-Settings.extension	Battery	battery.100
+com.apple.BluetoothSettings	Bluetooth	dot.radiowaves.left.and.right
+com.apple.ControlCenter-Settings.extension	Control Center	switch.2
+com.apple.Date-Time-Settings.extension	Date & Time	clock
+com.apple.Desktop-Settings.extension	Desktop & Dock	dock.rectangle
+com.apple.Displays-Settings.extension	Displays	display
+com.apple.Family-Settings.extension	Family	person.3
+com.apple.Focus-Settings.extension	Focus	moon
+com.apple.Game-Center-Settings.extension	Game Center	gamecontroller
+com.apple.Internet-Accounts-Settings.extension	Internet Accounts	at
+com.apple.Keyboard-Settings.extension	Keyboard	keyboard
+com.apple.Localization-Settings.extension	Language & Region	globe
+com.apple.Lock-Screen-Settings.extension	Lock Screen	lock
+com.apple.LoginItems-Settings.extension	Login Items & Extensions	power
+com.apple.Mouse-Settings.extension	Mouse	magicmouse
+com.apple.Network-Settings.extension	Network	network
+com.apple.Notifications-Settings.extension	Notifications	bell.badge
+com.apple.Print-Scan-Settings.extension	Printers & Scanners	printer
+com.apple.settings.PrivacySecurity.extension	Privacy & Security	hand.raised
+com.apple.Screen-Time-Settings.extension	Screen Time	hourglass
+com.apple.Sharing-Settings.extension	Sharing	square.and.arrow.up
+com.apple.Siri-Settings.extension	Apple Intelligence & Siri	sparkles
+com.apple.Software-Update-Settings.extension	Software Update	arrow.triangle.2.circlepath
+com.apple.Sound-Settings.extension	Sound	speaker.wave.2
+com.apple.Spotlight-Settings.extension	Spotlight	magnifyingglass
+com.apple.settings.Storage	Storage	internaldrive
+com.apple.Startup-Disk-Settings.extension	Startup Disk	externaldrive
+com.apple.Time-Machine-Settings.extension	Time Machine	clock.arrow.circlepath
+com.apple.Touch-ID-Settings.extension	Touch ID & Password	touchid
+com.apple.Trackpad-Settings.extension	Trackpad	hand.point.up.left
+com.apple.Users-Groups-Settings.extension	Users & Groups	person.2
+com.apple.NetworkExtensionSettingsUI.NESettingsUIExtension	VPN	lock.shield
+com.apple.WalletSettingsExtension	Wallet & Apple Pay	creditcard
+com.apple.Wallpaper-Settings.extension	Wallpaper	photo
+com.apple.wifi-settings-extension	Wi-Fi	wifi
