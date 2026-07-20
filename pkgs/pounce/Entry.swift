@@ -19,6 +19,7 @@ enum Main {
       --emoji                emoji picker
       --screenshots          screenshot browser
       --camera               camera preview
+      --find-files           search files & folders by name (Spotlight index)
       --cheatsheet [path]    cheatsheet overlay (default ~/.config/pounce/cheatsheet.json)
 
     focus (hush):
@@ -112,6 +113,7 @@ struct Invocation {
     var emoji = false
     var screenshots = false
     var camera = false
+    var fileSearch = false
     var cheatsheet = false
     var cheatsheetPath = "~/.config/pounce/cheatsheet.json"
     var maxEmpty: Int?
@@ -396,6 +398,7 @@ enum DaemonMode {
             if p.count > 3 && p[3] == "emoji" { inv.emoji = true }
             if p.count > 3 && p[3] == "screenshots" { inv.screenshots = true }
             if p.count > 3 && p[3] == "camera" { inv.camera = true }
+            if p.count > 3 && p[3] == "filesearch" { inv.fileSearch = true }
             if p.count > 3 && p[3] == "cheatsheet" { inv.cheatsheet = true }
             if p.count > 4, let m = Int(p[4]) { inv.maxEmpty = m }
             if p.count > 5 && !p[5].isEmpty { inv.cheatsheetPath = p[5] }
@@ -419,6 +422,8 @@ enum DaemonMode {
                 state.loadScreenshots(placeholder: inv.placeholder)
             } else if inv.camera {
                 state.loadCamera(placeholder: inv.placeholder)
+            } else if inv.fileSearch {
+                state.loadFileSearch(placeholder: inv.placeholder)
             } else if inv.cheatsheet {
                 state.loadCheatsheet(path: inv.cheatsheetPath, placeholder: inv.placeholder)
             } else {
@@ -455,6 +460,7 @@ enum ClientMode {
             case "--emoji":             inv.emoji = true
             case "--screenshots":       inv.screenshots = true
             case "--camera":            inv.camera = true
+            case "--find-files":        inv.fileSearch = true
             case "--cheatsheet":
                 inv.cheatsheet = true
                 // The JSON path is optional (defaults in Invocation) — don't
@@ -495,7 +501,8 @@ enum ClientMode {
             : (inv.emoji ? "emoji"
             : (inv.screenshots ? "screenshots"
             : (inv.camera ? "camera"
-            : (inv.cheatsheet ? "cheatsheet" : "")))))
+            : (inv.fileSearch ? "filesearch"
+            : (inv.cheatsheet ? "cheatsheet" : ""))))))
         let maxEmpty = inv.maxEmpty.map(String.init) ?? ""
         var payload = "CONFIG\t\(inv.placeholder ?? "")\t\(inv.icon ?? "")\t\(mode)\t\(maxEmpty)\t\(inv.cheatsheetPath)\n"
         for line in stdinLines { payload += line + "\n" }
@@ -540,6 +547,8 @@ enum ClientMode {
             state.loadScreenshots(placeholder: inv.placeholder)
         } else if inv.camera {
             state.loadCamera(placeholder: inv.placeholder)
+        } else if inv.fileSearch {
+            state.loadFileSearch(placeholder: inv.placeholder)
         } else if inv.cheatsheet {
             state.loadCheatsheet(path: inv.cheatsheetPath, placeholder: inv.placeholder)
         } else {

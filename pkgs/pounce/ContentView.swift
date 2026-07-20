@@ -160,6 +160,8 @@ struct ContentView: View {
                 CameraView(state: state)
             } else if state.displayMode == .cheatsheet {
                 CheatsheetView(state: state)
+            } else if state.displayMode == .fileSearch {
+                FileSearchView(state: state)
             } else {
                 launcherBody
             }

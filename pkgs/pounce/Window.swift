@@ -285,6 +285,18 @@ final class PounceUI {
             }
         }
 
+        // Find Files: open the hit in its default app, or reveal it in Finder.
+        // NSWorkspace.open (not openApplication) is the document path; reveal
+        // reuses the same file-viewer call app-reveal uses.
+        if let f = commit.fileOpen {
+            let url = URL(fileURLWithPath: f.path)
+            if f.reveal {
+                NSWorkspace.shared.activateFileViewerSelecting([url])
+            } else {
+                NSWorkspace.shared.open(url)
+            }
+        }
+
         resultSink?(commit.clientString ?? "")
 
         switch commit.disposition {
@@ -293,10 +305,10 @@ final class PounceUI {
             hideNow()
             if commit.pasteAfter {
                 restoreFocusAndPaste()
-            } else if commit.appLaunch == nil {
+            } else if commit.appLaunch == nil && commit.fileOpen == nil {
                 refocusCaptured(wasKey: wasKey)
             } else {
-                capturedApp = nil   // the launched app takes focus
+                capturedApp = nil   // the launched app / opened file / Finder takes focus
             }
         case .linger:
             state.isVisible = false

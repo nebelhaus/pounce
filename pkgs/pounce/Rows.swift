@@ -26,15 +26,19 @@ struct ItemRow: View {
     let item: PounceItem
     let isSelected: Bool
 
-    private var appIconPath: String? {
-        guard let icon = item.icon, icon.hasPrefix("app:") else { return nil }
-        return String(icon.dropFirst(4))
+    // Both "app:<path>" (launcher) and "file:<path>" (Find Files) render the
+    // real Finder icon for that path via NSWorkspace; the prefix just marks it.
+    private var iconFilePath: String? {
+        guard let icon = item.icon else { return nil }
+        if icon.hasPrefix("app:") { return String(icon.dropFirst(4)) }
+        if icon.hasPrefix("file:") { return String(icon.dropFirst(5)) }
+        return nil
     }
 
     var body: some View {
         HStack(spacing: 14) {
             Group {
-                if let path = appIconPath {
+                if let path = iconFilePath {
                     Image(nsImage: AppIconCache.shared.icon(for: path))
                         .resizable().aspectRatio(contentMode: .fit)
                 } else if let iconName = item.icon {

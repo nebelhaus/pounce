@@ -108,6 +108,20 @@ struct PounceItem: Identifiable {
                           frecencyKey: "app:\(path)", baseBoost: boost, group: nil, submenu: false)
     }
 
+    // A file/folder hit for the Find Files mode. Display-only: FileSearchView
+    // routes selection to DaemonState.commitFile (open / reveal / copy), so this
+    // never flows through the generic commit(). The "file:" icon renders the
+    // file's real Finder icon (see ItemRow); `parent` is the abbreviated dir.
+    static func file(name: String, path: String, parent: String) -> PounceItem {
+        return PounceItem(raw: path, title: name, searchAlias: nil, subtitle: parent,
+                          icon: "file:\(path)",
+                          actions: [ItemAction(key: "enter", label: "Open"),
+                                    ItemAction(key: "cmd", label: "Reveal in Finder"),
+                                    ItemAction(key: "opt", label: "Copy Path")],
+                          kind: .plain, payload: path,
+                          frecencyKey: "file:\(path)", baseBoost: 0, group: nil, submenu: false)
+    }
+
     func action(for key: String) -> ItemAction? { actions.first { $0.key == key } }
 }
 

@@ -17,11 +17,15 @@ struct Commit {
     // focused app and synthesizes ⌘V (clipboard auto-paste). Defaults false so
     // the existing memberwise-init call sites need no change.
     var pasteAfter: Bool = false
+    // A Find Files hit to act on: open it in its default app (reveal false) or
+    // reveal it in Finder (reveal true). Distinct from appLaunch, which uses the
+    // app-specific openApplication path; files open via NSWorkspace.open.
+    var fileOpen: (path: String, reveal: Bool)? = nil
 }
 
 // MARK: - State
 
-enum DisplayMode { case list, clipboard, emoji, screenshots, camera, cheatsheet }
+enum DisplayMode { case list, clipboard, emoji, screenshots, camera, cheatsheet, fileSearch }
 
 final class DaemonState: ObservableObject {
     @Published var items: [PounceItem] = []
@@ -36,6 +40,10 @@ final class DaemonState: ObservableObject {
     @Published var emojiEntries: [EmojiEntry] = []
     @Published var screenshotEntries: [ScreenshotEntry] = []
     @Published var cheatsheetGroups: [CheatsheetGroup] = []
+    // Find Files: live results and whether a search is in flight (spinner/hint).
+    @Published var fileResults: [FileHit] = []
+    @Published var fileSearching = false
+    @Published var fileSearchEnabled = true   // false → mode shows a "disabled" note
     var cheatsheetPath = ""            // set with cheatsheetGroups; read-only for the view
     @Published var isLoading = false   // skeleton shown between a two-step command's steps
     @Published var loadingTitle = ""   // selected command's name, shown in the static header
@@ -57,11 +65,16 @@ final class DaemonState: ObservableObject {
         case .screenshots: return ScreenshotLayout.width
         case .camera: return CameraLayout.width
         case .cheatsheet: return CheatsheetLayout.width
+        case .fileSearch: return FileSearchLayout.width
         case .list: return metrics.width
         }
     }
 
     let frecency = Frecency()
+    // Lazily created the first time Find Files mode opens (no cost otherwise);
+    // holds the live NSMetadataQuery. reset() stops it so it never runs on after
+    // the palette closes.
+    private var fileSearcher: FileSearchController?
     private var frecencyScores: [UUID: Double] = [:]
 
     // Quick answer (inline calculator & friends) for the current launcher
@@ -86,6 +99,11 @@ final class DaemonState: ObservableObject {
         // session from a previous peek doesn't keep the hardware (and its
         // indicator light) on behind the next view.
         if displayMode == .camera { CameraController.shared.stop() }
+        // Stop any live file-search query so it doesn't keep hitting the metadata
+        // index after the palette is dismissed.
+        fileSearcher?.stop()
+        fileResults = []
+        fileSearching = false
         items = []
         itemsSorted = []
         frecencyScores = [:]
@@ -175,6 +193,61 @@ final class DaemonState: ObservableObject {
         displayMode = .emoji
         emojiEntries = EmojiStore.shared.all
         placeholderText = placeholder ?? "Search emoji…"
+    }
+
+    // MARK: Find Files
+
+    // Enter Find Files mode. The searcher is created on first use (wired to
+    // publish results here) and configured from live settings each time.
+    func loadFileSearch(placeholder: String?) {
+        displayMode = .fileSearch
+        let cfg = Settings.load().fileSearch
+        fileSearchEnabled = cfg.enabled
+        fileResults = []
+        fileSearching = false
+        placeholderText = placeholder ?? "Search files & folders…"
+        guard cfg.enabled else { return }
+
+        let searcher = fileSearcher ?? FileSearchController(
+            frecency: { [weak self] key in self?.frecency.score(for: key) ?? 0 })
+        searcher.maxResults = cfg.maxResults
+        searcher.homeOnly = cfg.homeOnly
+        searcher.onUpdate = { [weak self] hits, searching in
+            // The query runs on main, but guard the hop so a stray notification
+            // can never touch @Published off-main.
+            if Thread.isMainThread {
+                self?.fileResults = hits; self?.fileSearching = searching
+            } else {
+                DispatchQueue.main.async { self?.fileResults = hits; self?.fileSearching = searching }
+            }
+        }
+        fileSearcher = searcher
+    }
+
+    // A keystroke in Find Files mode: drive the live query (debounced inside).
+    func fileQueryChanged(_ query: String) {
+        fileSearcher?.search(query)
+    }
+
+    // Act on a selected file. Open (⏎) and reveal (⌘⏎) route through the daemon's
+    // NSWorkspace; copy-path (⌥⏎) is handled here (clipboard + client echo). Every
+    // path records frecency so files you open float up next time. All read-only —
+    // nothing here moves or deletes a file.
+    func commitFile(_ hit: FileHit, action: String) {
+        frecency.record("file:\(hit.path)")
+        switch action {
+        case "cmd":
+            onCommit?(Commit(clientString: "", disposition: .hideNow, appLaunch: nil,
+                             fileOpen: (hit.path, true)))
+        case "opt":
+            let pb = NSPasteboard.general
+            pb.clearContents()
+            pb.setString(hit.path, forType: .string)
+            onCommit?(Commit(clientString: hit.path, disposition: .hideNow, appLaunch: nil))
+        default:
+            onCommit?(Commit(clientString: "", disposition: .hideNow, appLaunch: nil,
+                             fileOpen: (hit.path, false)))
+        }
     }
 
     func emojiFrecency(_ c: String) -> Double { frecency.score(for: "emoji:\(c)") }

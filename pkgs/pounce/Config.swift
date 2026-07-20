@@ -71,6 +71,17 @@ enum CameraLayout {
     static let height: CGFloat = previewHeight + barHeight
 }
 
+// Fixed geometry for the Find Files window: a launcher-width results list with a
+// fixed visible height, so async Spotlight results stream in without the window
+// resizing under the user's cursor.
+enum FileSearchLayout {
+    static let width: CGFloat = 720
+    static let rowHeight: CGFloat = 46
+    static let visibleRows = 8
+    static let headerHeight: CGFloat = 60
+    static var listHeight: CGFloat { rowHeight * CGFloat(visibleRows) }
+}
+
 // Fixed width for the cheatsheet overlay; height follows the content, capped
 // near the screen edge (see CheatsheetView.maxBodyHeight).
 enum CheatsheetLayout {
@@ -101,6 +112,16 @@ struct ClipboardSettings {
 // The other engines are pure and always on.
 struct QuickAnswerSettings {
     var currency: Bool = true
+}
+
+// Find Files tuning. A safe, read-only feature (local Spotlight index only, no
+// network), so it's on by default. `homeOnly` scopes the search to the user's
+// home directory — the sane default for "find my file"; set false to search the
+// whole indexed computer. `maxResults` caps how many hits the list shows.
+struct FileSearchSettings {
+    var enabled: Bool = true
+    var homeOnly: Bool = true
+    var maxResults: Int = 60
 }
 
 // App-launcher tuning. `demoteBundleIds` lists apps that should sink below
@@ -148,6 +169,7 @@ struct Settings {
     var hotkey = HotKeyConfig()
     var windows = WindowSwitcherSettings()
     var quickAnswers = QuickAnswerSettings()
+    var fileSearch = FileSearchSettings()
     // Named color palette (see Palette.named). Defaults to nebelung.
     var theme: String = "nebelung"
 
@@ -184,6 +206,11 @@ struct Settings {
         }
         if let qa = obj["quickAnswers"] as? [String: Any] {
             if let c = qa["currency"] as? Bool { s.quickAnswers.currency = c }
+        }
+        if let fs = obj["fileSearch"] as? [String: Any] {
+            if let e = fs["enabled"] as? Bool { s.fileSearch.enabled = e }
+            if let h = fs["homeOnly"] as? Bool { s.fileSearch.homeOnly = h }
+            if let m = fs["maxResults"] as? Int { s.fileSearch.maxResults = m }
         }
         if let ap = obj["apps"] as? [String: Any] {
             if let d = ap["demoteBundleIds"] as? [String] { s.appLauncher.demoteBundleIds = Set(d) }
