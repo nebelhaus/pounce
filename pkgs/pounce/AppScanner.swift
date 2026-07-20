@@ -39,13 +39,16 @@ final class AppScanner {
     // demotion penalty are recomputed per apps() call, against the live config
     // and clock rather than frozen at gather time. Helpers are dropped at gather
     // time (see rebuildSpotlight), so a SpotApp is always a launchable app.
-    private struct SpotApp { let name: String; let path: String; let bundleId: String; let added: Double }
+    // `key` is the symlink-resolved dedupe key, computed once here (off the
+    // keystroke path) so the union in apps() does no filesystem I/O.
+    private struct SpotApp { let name: String; let path: String; let bundleId: String; let added: Double; let key: String }
     // A launchable filesystem app, helper-filtered at gather time and kept
     // config-independent (no boost/demotion baked in, hide list not yet applied)
     // so a single snapshot serves every apps() call — the recency boost, the
     // demotion penalty, and the per-config hide filter are all recomputed at
-    // read time against the live clock and config.
-    private struct FSApp { let name: String; let path: String; let alias: String?; let bundleId: String; let ctime: Double }
+    // read time against the live clock and config. `key` is the symlink-resolved
+    // dedupe key, precomputed off the keystroke path (see SpotApp.key).
+    private struct FSApp { let name: String; let path: String; let alias: String?; let bundleId: String; let ctime: Double; let key: String }
 
     private var cache: [String: Meta] = [:]           // path -> metadata (fs scan)
     private var fsApps: [FSApp]? = nil                 // nil until the first walk
@@ -122,9 +125,13 @@ final class AppScanner {
     }
 
     // Stable dedupe key: resolve symlinks so a nix-store app symlinked into
-    // ~/Applications and its store-path twin collapse to one entry.
-    private func dedupeKey(for item: PounceItem) -> String {
-        URL(fileURLWithPath: item.payload).resolvingSymlinksInPath().standardizedFileURL.path
+    // ~/Applications and its store-path twin collapse to one entry. This touches
+    // the filesystem (resolvingSymlinksInPath walks each component, following
+    // store symlinks), so it is computed ONCE per app at gather time — never in
+    // apps(), which runs on every ⌘Space and would otherwise pay hundreds of
+    // symlink resolutions on the main thread per summon.
+    private static func dedupeKey(forPath path: String) -> String {
+        URL(fileURLWithPath: path).resolvingSymlinksInPath().standardizedFileURL.path
     }
 
     // The launcher's app list: filesystem scan ∪ live Spotlight index.
@@ -141,29 +148,30 @@ final class AppScanner {
             rebuildFilesystem()
             lock.lock(); snapshot = fsApps; lock.unlock()
         }
-        let fs: [PounceItem] = (snapshot ?? [])
+        // Each entry carries its precomputed (symlink-resolved) dedupe key, so the
+        // union below is pure in-memory work — no filesystem I/O on the keystroke.
+        let fs: [(key: String, item: PounceItem)] = (snapshot ?? [])
             .filter { !hiddenBundleIds.contains($0.bundleId) }
             .map {
-                makeApp(name: $0.name, path: $0.path, bundleId: $0.bundleId,
-                        age: now - $0.ctime, demoted: demotedBundleIds, alias: $0.alias)
+                ($0.key, makeApp(name: $0.name, path: $0.path, bundleId: $0.bundleId,
+                                 age: now - $0.ctime, demoted: demotedBundleIds, alias: $0.alias))
             }
 
         lock.lock(); let spot = spotlight; lock.unlock()
-        let spotItems: [PounceItem] = (spot ?? [])
+        let spotItems: [(key: String, item: PounceItem)] = (spot ?? [])
             .filter { !hiddenBundleIds.contains($0.bundleId) }
             .map {
-                makeApp(name: $0.name, path: $0.path, bundleId: $0.bundleId,
-                        age: now - $0.added, demoted: demotedBundleIds)
+                ($0.key, makeApp(name: $0.name, path: $0.path, bundleId: $0.bundleId,
+                                 age: now - $0.added, demoted: demotedBundleIds))
             }
-        guard !spotItems.isEmpty else { return fs }
+        guard !spotItems.isEmpty else { return fs.map { $0.item } }
 
         var byKey: [String: PounceItem] = [:]
         var order: [String] = []
         // Spotlight first, filesystem second: on a key clash the filesystem entry
         // overwrites, keeping the canonical /Applications launch path and the
         // display name read from the very bundle we're about to launch.
-        for item in spotItems + fs {
-            let key = dedupeKey(for: item)
+        for (key, item) in spotItems + fs {
             if byKey[key] == nil { order.append(key) }
             byKey[key] = item
         }
@@ -207,7 +215,8 @@ final class AppScanner {
             }
             if m.helper { return }
             result.append(FSApp(name: m.name, path: path, alias: m.alias,
-                                bundleId: m.bundleId, ctime: ctime))
+                                bundleId: m.bundleId, ctime: ctime,
+                                key: Self.dedupeKey(forPath: path)))
         }
 
         for dir in searchDirs {
@@ -315,7 +324,8 @@ final class AppScanner {
             let added = (item.value(forAttribute: "kMDItemDateAdded") as? Date)?.timeIntervalSince1970
                 ?? (item.value(forAttribute: NSMetadataItemFSCreationDateKey) as? Date)?.timeIntervalSince1970
                 ?? 0
-            items.append(SpotApp(name: name, path: path, bundleId: bundleId, added: added))
+            items.append(SpotApp(name: name, path: path, bundleId: bundleId, added: added,
+                                 key: Self.dedupeKey(forPath: path)))
         }
         query.enableUpdates()
         lock.lock(); spotlight = items; lock.unlock()

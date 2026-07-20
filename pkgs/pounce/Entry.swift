@@ -193,6 +193,7 @@ enum DaemonMode {
             let lines = registry.entries.map { $0.registryLine }
             state.load(lines: lines, placeholder: "Search apps & actions...",
                        icon: "magnifyingglass", launcher: true, maxEmpty: 7)
+            let tBuild = DispatchTime.now()   // registry + app scan + frecency + sort
             // Launcher selections that aren't native app launches arrive as
             // "run\t<id>"; spawn that command script ourselves, the way
             // pounce-palette used to exec it. App launches come back with an empty
@@ -203,14 +204,27 @@ enum DaemonMode {
                 if let path = registry.scriptPath(for: id) { CommandSpawner.run(scriptPath: path) }
             }
             ui.present()
-            // Press→present latency on the in-process fast path, with the item
-            // count (apps + commands scanned). Diagnostic for summon-lag reports:
-            // if this line shows up when the user hits their hotkey they're on
-            // the daemon path (not an external binder spawning pounce-palette),
-            // and the ms exposes whether the synchronous registry + app scan is
-            // the cost.
-            let ms = Int((Double(DispatchTime.now().uptimeNanoseconds &- t0.uptimeNanoseconds) / 1_000_000).rounded())
-            NSLog("pounce daemon: launcher present in \(ms) ms (\(state.items.count) items)")
+            // Press→present latency on the in-process fast path, broken into
+            // phases so a summon-lag report localizes the cost instead of guessing:
+            //   build   — synchronous registry refresh + app scan + sort
+            //   sync    — build + present()'s synchronous layout/activate
+            //   visible — build + sync + the deferred reveal tick (resize + fade
+            //             in). This last runloop turn is NOT counted by the first
+            //             two, yet it's where SwiftUI paints and the compositor
+            //             shows the window — so on a machine where `sync` is small
+            //             but the summon still feels slow, `visible` is the tell.
+            // All three carry the "launcher present" substring so one grep catches
+            // them. If these lines appear on the user's hotkey they're on the fast
+            // daemon path (not an external binder spawning pounce-palette).
+            let ms = { (t: DispatchTime) in
+                Int((Double(DispatchTime.now().uptimeNanoseconds &- t.uptimeNanoseconds) / 1_000_000).rounded())
+            }
+            let buildMs = ms(t0) - ms(tBuild)
+            let syncMs = ms(t0)
+            let count = state.items.count
+            DispatchQueue.main.async {
+                NSLog("pounce daemon: launcher present — build \(buildMs)ms, sync \(syncMs)ms, visible \(ms(t0))ms (\(count) items)")
+            }
         }
 
         if settings.hotkey.enabled {
