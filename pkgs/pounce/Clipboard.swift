@@ -58,10 +58,19 @@ enum Paste {
     }
 }
 
-// One-time nudge when auto-paste is enabled but the daemon isn't trusted yet:
-// fire the system Accessibility prompt (which deep-links to the right Settings
-// pane), guarded by a marker so it never nags on every paste.
+// Nudge when auto-paste is enabled but the daemon isn't trusted yet: fire the
+// system Accessibility prompt (which deep-links to the right Settings pane).
+// Callers only reach this while untrusted, so we throttle with a time-based
+// cooldown — re-prompt at most once per `cooldown` — rather than a permanent
+// marker. A permanent marker would silence the prompt forever after a single
+// firing, stranding the user if the grant is later lost (e.g. a code-signing
+// identity change drops TCC): they'd have no way to be re-prompted. The
+// cooldown instead re-arms itself, nudging again after the interval while still
+// untrusted, without nagging on every paste. The marker's modification time is
+// the last-prompted timestamp.
 enum AccessibilityHint {
+    private static let cooldown: TimeInterval = 24 * 60 * 60
+
     private static var marker: URL {
         FileManager.default.homeDirectoryForCurrentUser
             .appendingPathComponent(".local/state/pounce/.autopaste-prompted")
@@ -69,10 +78,18 @@ enum AccessibilityHint {
 
     static func promptOnce() {
         let m = marker
-        if FileManager.default.fileExists(atPath: m.path) { return }
+        if let last = try? m.resourceValues(forKeys: [.contentModificationDateKey])
+            .contentModificationDate, -last.timeIntervalSinceNow < cooldown {
+            return  // prompted within the cooldown window; stay quiet
+        }
         try? FileManager.default.createDirectory(at: m.deletingLastPathComponent(),
                                                  withIntermediateDirectories: true)
-        FileManager.default.createFile(atPath: m.path, contents: nil)
+        // Stamp the marker (create, or bump mtime on an existing one) so the next
+        // paste sees a fresh cooldown.
+        if !FileManager.default.createFile(atPath: m.path, contents: nil) {
+            try? FileManager.default.setAttributes([.modificationDate: Date()],
+                                                   ofItemAtPath: m.path)
+        }
         let opts = [kAXTrustedCheckOptionPrompt.takeUnretainedValue(): true] as CFDictionary
         _ = AXIsProcessTrustedWithOptions(opts)
     }
