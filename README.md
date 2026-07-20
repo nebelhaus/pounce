@@ -69,20 +69,21 @@ brew services start pounce       # run the palette daemon
 pounce --request-accessibility   # approve the prompt (see below)
 ```
 
-The formula builds from source on install — a single `swiftc` invocation
-against the system frameworks, so it only needs the Xcode Command Line Tools
-Homebrew already requires. Then bind a hotkey to `pounce-palette` in whatever
-you use for hotkeys (skhd, AeroSpace's `exec-and-forget`, …).
+The formula installs a prebuilt `Pounce.app` from the release tarball, signed
+with our Developer ID and notarized — no compile step, no Xcode Command Line
+Tools. (Building from source is still a `nix build` away; see below.) Then bind
+a hotkey to `pounce-palette` in whatever you use for hotkeys (skhd, AeroSpace's
+`exec-and-forget`, …).
 
-> After a `brew upgrade pounce`, re-run `pounce --request-accessibility`: the
-> binary is ad-hoc signed, so its code identity changes with every rebuild
-> (same story as skhd/yabai).
+> The Developer ID identity is stable across releases, so the Accessibility
+> grant survives `brew upgrade pounce` — nothing to re-approve. (A Nix build is
+> still ad-hoc signed and does lose the grant on rebuild; see below.)
 
 ### Requirements
 
-- macOS (Apple Silicon or Intel)
-- **Xcode Command Line Tools** — pounce compiles against the system Swift
-  toolchain via `xcrun` (`xcode-select --install`).
+- macOS 14 Sonoma or later, Apple Silicon — the Homebrew release is arm64 only
+- **Xcode Command Line Tools** — only to build from source: that path compiles
+  against the system Swift toolchain via `xcrun` (`xcode-select --install`).
 
 ## accessibility (one-time)
 
@@ -301,8 +302,17 @@ that starts the daemon should export them:
 | `POUNCE_COMMAND_PATH` | colon-separated dirs for ad-hoc layering |
 
 `~/.config/pounce/commands` is always searched last (highest precedence). If the
-hotkey can't be registered (another app owns it) the daemon logs and leaves the
+hotkey can't be registered at all the daemon logs that and leaves the
 external-binder path working.
+
+The case that actually bites is quieter: when macOS still owns your combo —
+Spotlight on ⌘Space — `RegisterEventHotKey` *succeeds* and the system routes the
+key to Spotlight anyway, so the daemon holds a registration it never receives a
+press for. It can't detect that from the registration, so at startup it reads
+`com.apple.symbolichotkeys`, names the colliding shortcut, and warns: free the
+key in System Settings → Keyboard → Keyboard Shortcuts, then restart pounce. It
+also logs the hotkey's first press, so a swallowed hotkey is distinguishable
+from a working one in the log.
 
 The default **nebelung** palette is the desaturated Catppuccin used across the
 [nebelhaus](https://github.com/nebelhaus) rice — it's baked into the binary at
@@ -327,7 +337,10 @@ macOS doesn't let ⌘Tab be rebound — the daemon takes it with an event tap,
 which the system gates behind the **Accessibility** grant. Without the grant
 (or during Secure Input, e.g. password fields) the tap stands down and stock
 ⌘Tab keeps working, so enabling this can never leave you unable to switch
-windows. It's off by default; toggling needs a daemon restart.
+windows. Grant Accessibility while the daemon is running and the switcher arms
+itself within a couple of seconds — a watcher polls the grant, so no restart;
+revoke it and the tap drops live so stock ⌘Tab resumes. It's off by default, and
+flipping `windows.enabled` itself still needs a daemon restart.
 
 Running [AeroSpace](https://github.com/nikitabobko/AeroSpace)? Each row gets a
 workspace badge, and focusing goes through `aerospace focus --window-id` so a
