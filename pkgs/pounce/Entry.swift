@@ -152,6 +152,9 @@ enum DaemonMode {
         let state = DaemonState()
         let ui = PounceUI(state: state)
         ui.window.orderOut(nil)
+        // Warm the SwiftUI render pipeline off the hot path so the first ⌘Space
+        // doesn't pay NSHostingView's initial layout/draw on the keystroke.
+        DispatchQueue.main.async { ui.warmRender() }
 
         AppScanner.shared.warm()
         EmojiStore.shared.warm()   // filter the dataset to OS-renderable glyphs off the main thread

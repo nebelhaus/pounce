@@ -114,6 +114,23 @@ final class PounceUI {
 
     // MARK: Presentation
 
+    // Build the SwiftUI view tree and run its first layout + draw at startup,
+    // while the window is hidden, so the very first ⌘Space doesn't pay
+    // NSHostingView's one-time initial render on the keystroke. An ordered-out
+    // window otherwise defers that render until the panel is first shown —
+    // landing the whole cost (SwiftUI graph build, CoreText font realization,
+    // the vibrancy layer) on the hot path. Reading fittingSize forces SwiftUI to
+    // build its graph and lay out; displayIfNeeded forces the first draw into the
+    // backing store. Cheap and idempotent; safe to call once at daemon start.
+    func warmRender() {
+        let target = NSSize(width: state.targetWidth, height: 400)
+        window.setContentSize(target)
+        hosting.frame = window.contentView?.bounds ?? .zero
+        hosting.layoutSubtreeIfNeeded()
+        _ = hosting.fittingSize
+        hosting.displayIfNeeded()
+    }
+
     func present() {
         cancelLinger()
         state.isLoading = false   // new content replaces any in-flight spinner
