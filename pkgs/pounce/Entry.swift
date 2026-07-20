@@ -131,18 +131,49 @@ enum DaemonMode {
     static var lastTrusted: Bool?
     static var accessibilityTimer: Timer?
 
+    // Arms the MRU window switcher (⌘Tab tap) if it's configured, permitted, and
+    // not already up. Idempotent, so it's safe to call both at startup and again
+    // from the accessibility watcher whenever the grant flips on — a grant ticked
+    // *after* the daemon booted then activates ⌘Tab live, no restart needed (the
+    // event tap needs Accessibility, which the user may only grant later).
+    static func armWindowSwitcher(_ settings: WindowSwitcherSettings) {
+        guard settings.enabled, windowSwitcher == nil else { return }
+        let combo = "\(settings.modifiers.joined(separator: "+"))+\(settings.key)"
+        guard AXIsProcessTrusted() else {
+            NSLog("pounce daemon: windows.enabled is set but Accessibility is not granted; window switcher off, stock \(combo) untouched (grant via `pounce --request-accessibility`)")
+            return
+        }
+        if let switcher = WindowSwitcher(settings: settings) {
+            windowSwitcher = switcher
+            NSLog("pounce daemon: window switcher armed on \(combo)")
+        } else {
+            NSLog("pounce daemon: window switcher event tap failed to install; stock \(combo) untouched")
+        }
+    }
+
     // The startup `trusted=` line is a snapshot: TCC can flip while the daemon
     // runs (the user ticks the box in System Settings, or a `brew upgrade`
     // reissues the adhoc signature and drops the grant). AXIsProcessTrusted() is
     // live at every point of use, but a stale one-time log misleads anyone
     // reading it — so poll and log the transitions, giving the log a truthful
     // running account of the grant instead of a frozen boot-time value.
-    static func watchAccessibility() {
+    //
+    // The watcher also acts on the flip: on grant it arms the ⌘Tab switcher whose
+    // tap couldn't install without Accessibility (so no daemon restart is needed);
+    // on revoke it drops the now-dead tap so the stock switcher resumes and a
+    // later re-grant re-arms from a clean slate.
+    static func watchAccessibility(windows: WindowSwitcherSettings) {
         accessibilityTimer = Timer.scheduledTimer(withTimeInterval: 2, repeats: true) { _ in
             let now = AXIsProcessTrusted()
             if now != lastTrusted {
                 lastTrusted = now
                 NSLog("pounce daemon accessibility trusted=\(now) (changed while running)")
+                if now {
+                    armWindowSwitcher(windows)
+                } else if windowSwitcher != nil {
+                    windowSwitcher = nil   // deinit disables the tap + removes the run-loop source
+                    NSLog("pounce daemon: Accessibility revoked; window switcher disarmed, stock switcher restored")
+                }
             }
         }
     }
@@ -268,18 +299,9 @@ enum DaemonMode {
         // palette hotkey (Carbon, no permissions), taking ⌘Tab needs an event
         // tap, which macOS gates behind Accessibility — without the grant the
         // stock switcher is left untouched, so enabling this can never brick
-        // window switching.
-        if settings.windows.enabled {
-            let combo = "\(settings.windows.modifiers.joined(separator: "+"))+\(settings.windows.key)"
-            if !AXIsProcessTrusted() {
-                NSLog("pounce daemon: windows.enabled is set but Accessibility is not granted; window switcher off, stock \(combo) untouched (grant via `pounce --request-accessibility`)")
-            } else if let switcher = WindowSwitcher(settings: settings.windows) {
-                windowSwitcher = switcher
-                NSLog("pounce daemon: window switcher armed on \(combo)")
-            } else {
-                NSLog("pounce daemon: window switcher event tap failed to install; stock \(combo) untouched")
-            }
-        }
+        // window switching. If the grant is only ticked later, watchAccessibility
+        // arms it live, so this boot-time call may find no grant and no-op.
+        armWindowSwitcher(settings.windows)
 
         // Clipboard history watcher: poll the pasteboard while the daemon lives.
         if settings.clipboard.enabled {
@@ -304,7 +326,7 @@ enum DaemonMode {
         // value that happened to hold the instant the daemon launched.
         lastTrusted = AXIsProcessTrusted()
         NSLog("pounce daemon accessibility trusted=\(lastTrusted!) (startup snapshot)")
-        watchAccessibility()
+        watchAccessibility(windows: settings.windows)
         app.run()
     }
 
