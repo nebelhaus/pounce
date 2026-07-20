@@ -92,6 +92,12 @@ enum HotKeyParser {
         return UInt32(mask)
     }
 
+    // Expose the parsed keycode as an Int for conflict-checking against macOS's
+    // own shortcut registry (which stores the same virtual keycodes).
+    static func virtualKeyCode(for name: String) -> Int? {
+        keyCodes[name.lowercased()]
+    }
+
     // Named keys → Carbon virtual keycodes (kVK_*). Only the keys worth binding
     // to a launcher; everything else can be added here as needed.
     private static let keyCodes: [String: Int] = [
@@ -108,4 +114,88 @@ enum HotKeyParser {
         "4": kVK_ANSI_4, "5": kVK_ANSI_5, "6": kVK_ANSI_6, "7": kVK_ANSI_7,
         "8": kVK_ANSI_8, "9": kVK_ANSI_9,
     ]
+}
+
+// MARK: - System shortcut conflict detection
+
+// macOS keeps its own global shortcuts — Spotlight's ⌘Space above all — in the
+// com.apple.symbolichotkeys preference domain. When pounce's configured hotkey
+// collides with one that's still enabled, RegisterEventHotKey SUCCEEDS but the
+// system shortcut wins the keypress: the daemon holds a registration it never
+// receives events for, so the palette silently never opens on that key. That's
+// invisible from our side (registration reported success) and baffling from the
+// user's (⌘Space "does nothing", or opens Spotlight) — the exact "pressed it 15
+// times, nothing in the log" failure. Detect the collision against macOS's own
+// registry at startup and name the culprit so the fix — free the key in System
+// Settings → Keyboard → Keyboard Shortcuts — is obvious. (Third-party launchers
+// like Raycast/Alfred grab keys via private event taps, not this domain, so a
+// clash with those can't be seen here; the daemon can only flag system ones.)
+enum HotKeyConflict {
+    // Well-known symbolic-hotkey ids worth naming; Apple's ids are stable across
+    // releases. Unknown-but-colliding ids still warn, just generically.
+    private static let known: [Int: String] = [
+        64: "Spotlight — “Show Spotlight search”",
+        65: "Spotlight — “Show Finder search window”",
+        60: "Input Sources — “Select the previous input source”",
+        61: "Input Sources — “Select next source in Input menu”",
+    ]
+
+    // Cocoa NSEvent modifier-flag bits, as stored in symbolichotkeys' parameter
+    // triple [char, keyCode, modifierFlags]. Distinct from the Carbon masks
+    // HotKeyParser.modifierMask emits, so we compare in these terms.
+    private static let cmd = 0x100000, shift = 0x20000, option = 0x80000, control = 0x40000
+    private static var modifierMaskBits: Int { cmd | shift | option | control }
+
+    // Description of the first enabled system shortcut bound to the same key +
+    // modifiers as (keyName, modifierNames), or nil if none conflicts.
+    static func systemConflict(keyName: String, modifierNames: [String]) -> String? {
+        guard let keyCode = HotKeyParser.virtualKeyCode(for: keyName) else { return nil }
+        let want = cocoaModifiers(modifierNames)
+
+        guard let raw = CFPreferencesCopyAppValue("AppleSymbolicHotKeys" as CFString,
+                                                  "com.apple.symbolichotkeys" as CFString),
+              let dict = raw as? [String: Any] else { return nil }
+
+        for (id, entry) in dict {
+            guard let e = entry as? [String: Any] else { continue }
+            // `enabled` and the parameter ints normally come back as numbers, but
+            // depending on how the pref was written they can arrive as strings —
+            // coerce both so a type quirk can't make us miss (or invent) a clash.
+            guard asBool(e["enabled"]),
+                  let value = e["value"] as? [String: Any],
+                  let paramsAny = value["parameters"] as? [Any] else { continue }
+            let params = paramsAny.compactMap(asInt)
+            guard params.count >= 3,
+                  params[1] == keyCode,
+                  (params[2] & modifierMaskBits) == want else { continue }
+            return known[Int(id) ?? -1] ?? "a macOS system shortcut (symbolic-hotkey id \(id))"
+        }
+        return nil
+    }
+
+    private static func asInt(_ v: Any?) -> Int? {
+        if let n = v as? NSNumber { return n.intValue }
+        if let s = v as? String { return Int(s) }
+        return nil
+    }
+
+    private static func asBool(_ v: Any?) -> Bool {
+        if let n = v as? NSNumber { return n.intValue == 1 }
+        if let s = v as? String { return s == "1" || s.lowercased() == "true" }
+        return false
+    }
+
+    private static func cocoaModifiers(_ names: [String]) -> Int {
+        var m = 0
+        for name in names {
+            switch name.lowercased() {
+            case "cmd", "command", "super", "meta": m |= cmd
+            case "shift":                           m |= shift
+            case "opt", "option", "alt":            m |= option
+            case "ctrl", "control":                 m |= control
+            default: break
+            }
+        }
+        return m
+    }
 }

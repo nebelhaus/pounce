@@ -182,7 +182,17 @@ enum DaemonMode {
         // socket — build the launcher from the cached registry + warm app list and
         // present the already-built window straight away. Toggling: a second press
         // while it's up dismisses it (Raycast-style).
+        // Flips true the first time the hotkey actually delivers a press. The
+        // startup log says the key was *registered*; this says it's *received* —
+        // the two diverge exactly when a system shortcut (Spotlight ⌘Space) or a
+        // third-party launcher swallows the key, the failure that leaves the
+        // present log empty despite the user mashing ⌘Space. Logged once.
+        var hotkeyReceived = false
         let presentLauncher: () -> Void = {
+            if !hotkeyReceived {
+                hotkeyReceived = true
+                NSLog("pounce daemon: hotkey received its first press — the in-process launcher path is live")
+            }
             if state.isVisible { state.cancel(); return }
             let t0 = DispatchTime.now()
             let settings = Settings.load()   // re-read so config edits apply live
@@ -233,7 +243,17 @@ enum DaemonMode {
                 let manager = HotKeyManager(onFire: presentLauncher)
                 if manager.register(keyCode: keyCode, modifiers: modifiers) {
                     hotKey = manager
-                    NSLog("pounce daemon: hotkey \(settings.hotkey.modifiers.joined(separator: "+"))+\(settings.hotkey.key) registered")
+                    let combo = "\(settings.hotkey.modifiers.joined(separator: "+"))+\(settings.hotkey.key)"
+                    NSLog("pounce daemon: hotkey \(combo) registered")
+                    // Registration succeeding doesn't mean we'll get the key: if
+                    // macOS still owns the same combo (Spotlight ⌘Space is the
+                    // classic case), the system wins and pounce never receives a
+                    // press. Name the conflict so the fix is obvious instead of
+                    // the summon just silently doing nothing.
+                    if let conflict = HotKeyConflict.systemConflict(keyName: settings.hotkey.key,
+                                                                    modifierNames: settings.hotkey.modifiers) {
+                        NSLog("pounce daemon: WARNING — \(combo) is also bound to \(conflict); macOS routes the key there, so pounce likely never receives it and the palette won't open. Disable that shortcut in System Settings → Keyboard → Keyboard Shortcuts, then restart pounce.")
+                    }
                 } else {
                     NSLog("pounce daemon: could not register hotkey \(settings.hotkey.modifiers.joined(separator: "+"))+\(settings.hotkey.key) (already taken?); falling back to socket launch")
                 }
