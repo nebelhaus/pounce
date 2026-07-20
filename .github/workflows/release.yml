@@ -90,13 +90,20 @@ jobs:
           NOTARY_KEY_ID: ${{ secrets.NOTARY_KEY_ID }}
           NOTARY_ISSUER_ID: ${{ secrets.NOTARY_ISSUER_ID }}
         run: |
+          set -euo pipefail
           echo "$NOTARY_KEY_P8" | base64 -d > "$RUNNER_TEMP/notary.p8"
+          CREDS=(--key "$RUNNER_TEMP/notary.p8" --key-id "$NOTARY_KEY_ID" --issuer "$NOTARY_ISSUER_ID")
           ditto -c -k --sequesterRsrc --keepParent pkgs/pounce/Pounce.app "$RUNNER_TEMP/notarize.zip"
-          xcrun notarytool submit "$RUNNER_TEMP/notarize.zip" \
-            --key "$RUNNER_TEMP/notary.p8" \
-            --key-id "$NOTARY_KEY_ID" \
-            --issuer "$NOTARY_ISSUER_ID" \
-            --wait
+          # `submit --wait` exits 0 even when the verdict is Invalid, so check the
+          # status ourselves and dump Apple's per-file reasons before failing.
+          JSON="$(xcrun notarytool submit "$RUNNER_TEMP/notarize.zip" "${CREDS[@]}" --wait --output-format json)"
+          echo "$JSON"
+          read -r ID STATUS < <(echo "$JSON" | python3 -c 'import sys,json;d=json.load(sys.stdin);print(d.get("id",""),d.get("status",""))')
+          if [ "$STATUS" != "Accepted" ]; then
+            echo "::error::notarization $STATUS — Apple's log:"
+            xcrun notarytool log "$ID" "${CREDS[@]}" || true
+            exit 1
+          fi
           xcrun stapler staple pkgs/pounce/Pounce.app
           rm -f "$RUNNER_TEMP/notary.p8"
 
