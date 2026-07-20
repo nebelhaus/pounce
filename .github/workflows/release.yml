@@ -1,14 +1,26 @@
 name: release
 
-# Tag v<date> (CalVer, e.g. v2026.07.18) -> GitHub release with a source tarball
-# -> Homebrew tap bump.
+# Tag v<date> (CalVer, e.g. v2026.07.18) -> build + sign + notarize Pounce.app
+# -> GitHub release with a prebuilt macOS tarball -> Homebrew formula bump.
 #
-# The tarball is the repo at the tag PLUS Palette+nebelung.generated.swift
-# rendered from the PINNED nebelung input, so a Homebrew build gets the exact
-# palette this flake.lock pins — no drift from the Nix world.
+# The tarball ships a prebuilt Pounce.app signed with our Developer ID (hardened
+# runtime) and notarized by Apple, plus the command scripts. Because it is
+# prebuilt and signed, every install shares ONE stable code identity — so the
+# Accessibility/TCC grant survives upgrades (an ad-hoc build changed identity on
+# every rebuild and had to be re-granted). arm64 only, matching the nix target.
+#
+# The bundled Palette+nebelung.generated.swift is rendered from the PINNED
+# nebelung input, so the release gets the exact palette this flake.lock pins.
 #
 # Cut tags with `bench release pounce` from the workshop; it enforces that the
 # tag matches pkgs/pounce's version and that everything is pushed.
+#
+# Signing/notarization secrets (set once, per repo):
+#   MACOS_CERT_P12       base64 of the exported "Developer ID Application" .p12
+#   MACOS_CERT_PASSWORD  the password protecting that .p12
+#   NOTARY_KEY_P8        base64 of the App Store Connect API key (.p8)
+#   NOTARY_KEY_ID        that key's Key ID
+#   NOTARY_ISSUER_ID     the App Store Connect issuer ID
 
 on:
   push:
@@ -35,17 +47,81 @@ jobs:
             exit 1
           fi
 
-      - name: Smoke build (same as CI)
-        run: nix build .#pounce .#pounce-commands --print-build-logs
+      - name: Build Pounce.app (pinned palette, via the shared build.sh)
+        run: |
+          VERSION="$(nix eval --raw .#packages.aarch64-darwin.pounce.version)"
+          # Same palette the Nix build bakes in, rendered from the pinned input.
+          nix eval --raw .#packages.aarch64-darwin.pounce.paletteSwift \
+            > pkgs/pounce/Palette+nebelung.generated.swift
+          POUNCE_VERSION="$VERSION" bash pkgs/pounce/build.sh
 
-      - name: Assemble source tarball (repo + pre-rendered nebelung palette)
+      - name: Import Developer ID signing certificate
+        env:
+          MACOS_CERT_P12: ${{ secrets.MACOS_CERT_P12 }}
+          MACOS_CERT_PASSWORD: ${{ secrets.MACOS_CERT_PASSWORD }}
+        run: |
+          KEYCHAIN="$RUNNER_TEMP/signing.keychain-db"
+          KEYCHAIN_PW="$(uuidgen)"
+          echo "$MACOS_CERT_P12" | base64 -d > "$RUNNER_TEMP/cert.p12"
+          security create-keychain -p "$KEYCHAIN_PW" "$KEYCHAIN"
+          security set-keychain-settings -lut 21600 "$KEYCHAIN"
+          security unlock-keychain -p "$KEYCHAIN_PW" "$KEYCHAIN"
+          security import "$RUNNER_TEMP/cert.p12" -P "$MACOS_CERT_PASSWORD" \
+            -A -t cert -f pkcs12 -k "$KEYCHAIN"
+          security set-key-partition-list -S apple-tool:,apple: -k "$KEYCHAIN_PW" "$KEYCHAIN" >/dev/null
+          security list-keychains -d user -s "$KEYCHAIN" login.keychain-db
+          echo "SIGN_KEYCHAIN=$KEYCHAIN" >> "$GITHUB_ENV"
+          rm -f "$RUNNER_TEMP/cert.p12"
+
+      - name: Sign Pounce.app (Developer ID, hardened runtime)
+        run: |
+          IDENTITY="$(security find-identity -v -p codesigning "$SIGN_KEYCHAIN" \
+            | awk -F'"' '/Developer ID Application/{print $2; exit}')"
+          echo "signing with: $IDENTITY"
+          # Camera peek needs the hardened-runtime camera exception (Pounce.entitlements).
+          codesign --force --options runtime --timestamp \
+            --entitlements pkgs/pounce/Pounce.entitlements \
+            --sign "$IDENTITY" \
+            pkgs/pounce/Pounce.app
+
+      - name: Notarize + staple
+        env:
+          NOTARY_KEY_P8: ${{ secrets.NOTARY_KEY_P8 }}
+          NOTARY_KEY_ID: ${{ secrets.NOTARY_KEY_ID }}
+          NOTARY_ISSUER_ID: ${{ secrets.NOTARY_ISSUER_ID }}
+        run: |
+          set -euo pipefail
+          echo "$NOTARY_KEY_P8" | base64 -d > "$RUNNER_TEMP/notary.p8"
+          CREDS=(--key "$RUNNER_TEMP/notary.p8" --key-id "$NOTARY_KEY_ID" --issuer "$NOTARY_ISSUER_ID")
+          ditto -c -k --sequesterRsrc --keepParent pkgs/pounce/Pounce.app "$RUNNER_TEMP/notarize.zip"
+          # `submit --wait` exits 0 even when the verdict is Invalid, so check the
+          # status ourselves and dump Apple's per-file reasons before failing.
+          JSON="$(xcrun notarytool submit "$RUNNER_TEMP/notarize.zip" "${CREDS[@]}" --wait --output-format json)"
+          echo "$JSON"
+          read -r ID STATUS < <(echo "$JSON" | python3 -c 'import sys,json;d=json.load(sys.stdin);print(d.get("id",""),d.get("status",""))')
+          if [ "$STATUS" != "Accepted" ]; then
+            echo "::error::notarization $STATUS — Apple's log:"
+            xcrun notarytool log "$ID" "${CREDS[@]}" || true
+            exit 1
+          fi
+          xcrun stapler staple pkgs/pounce/Pounce.app
+          rm -f "$RUNNER_TEMP/notary.p8"
+
+      - name: Verify signature + notarization
+        run: |
+          codesign --verify --deep --strict --verbose=2 pkgs/pounce/Pounce.app
+          spctl -a -vvv -t exec pkgs/pounce/Pounce.app
+
+      - name: Assemble prebuilt macOS tarball
         run: |
           STAGE="$RUNNER_TEMP/pounce-$GITHUB_REF_NAME"
-          mkdir -p "$STAGE" dist
-          git archive HEAD | tar -x -C "$STAGE"
-          nix eval --raw .#packages.aarch64-darwin.pounce.paletteSwift \
-            > "$STAGE/pkgs/pounce/Palette+nebelung.generated.swift"
-          tar -czf "dist/pounce-src-$GITHUB_REF_NAME.tar.gz" \
+          mkdir -p "$STAGE/commands" dist
+          # Stapled app + the CLI/daemon scripts the formula installs alongside it.
+          cp -R pkgs/pounce/Pounce.app "$STAGE/"
+          cp pkgs/pounce/ports "$STAGE/"
+          cp pkgs/pounce-commands/pounce-palette "$STAGE/"
+          cp pkgs/pounce-commands/commands/*.sh "$STAGE/commands/"
+          tar -czf "dist/pounce-$GITHUB_REF_NAME-macos.tar.gz" \
             -C "$RUNNER_TEMP" "pounce-$GITHUB_REF_NAME"
 
       - name: Create GitHub release
@@ -68,11 +144,12 @@ jobs:
       - name: Point Formula/pounce.rb at the new release
         run: |
           TAG="$GITHUB_REF_NAME"
-          curl -fsSL --retry 5 --retry-delay 5 -o /tmp/sdist.tar.gz \
-            "https://github.com/nebelhaus/pounce/releases/download/$TAG/pounce-src-$TAG.tar.gz"
-          SHA="$(sha256sum /tmp/sdist.tar.gz | cut -d' ' -f1)"
+          VER="${TAG#v}"
+          curl -fsSL --retry 5 --retry-delay 5 -o /tmp/pounce.tar.gz \
+            "https://github.com/nebelhaus/pounce/releases/download/$TAG/pounce-$TAG-macos.tar.gz"
+          SHA="$(sha256sum /tmp/pounce.tar.gz | cut -d' ' -f1)"
           sed -i -E \
-            -e "s#releases/download/v[^/]+/pounce-src-v[^\"]+#releases/download/$TAG/pounce-src-$TAG.tar.gz#" \
+            -e "s#^  version \".*\"#  version \"$VER\"#" \
             -e "s#^  sha256 \".*\"#  sha256 \"$SHA\"#" \
             Formula/pounce.rb
           if git diff --quiet; then
@@ -81,5 +158,5 @@ jobs:
           fi
           git config user.name "haus-release[bot]"
           git config user.email "haus-release@users.noreply.github.com"
-          git commit -am "pounce ${TAG#v}"
+          git commit -am "pounce ${VER}"
           git push
