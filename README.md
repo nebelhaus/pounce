@@ -360,3 +360,5 @@ nebelhaus machine against your local checkout, uncommitted edits included.
 ## license
 
 MIT © nebelhaus
+
+<!-- noop: agent-worktree panel UI test (nebelhaus#50) — safe to close -->
