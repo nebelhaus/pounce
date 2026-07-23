@@ -101,7 +101,18 @@ final class CommandRegistry {
 
     private func searchDirs() -> [String] {
         var dirs: [String] = []
-        if let builtin = env["POUNCE_BUILTIN_DIR"], !builtin.isEmpty { dirs.append(builtin) }
+        // The built-in set. A packager's launch agent is expected to export
+        // POUNCE_BUILTIN_DIR (the Nix rice does); when it doesn't — notably the
+        // Homebrew launchd service, which only sets LANG — fall back to the same
+        // default pounce-palette uses (<prefix>/share/pounce/commands, derived
+        // from the executable). Without this the in-process launcher finds zero
+        // built-ins (Emoji, Clipboard, Find Files, …) while apps still list,
+        // since AppScanner needs no environment. Missing dirs are skipped later.
+        if let builtin = env["POUNCE_BUILTIN_DIR"], !builtin.isEmpty {
+            dirs.append(builtin)
+        } else if let fallback = Self.defaultBuiltinDir() {
+            dirs.append(fallback)
+        }
         for key in ["POUNCE_EXTRA_COMMAND_DIRS", "POUNCE_COMMAND_PATH"] {
             if let value = env[key], !value.isEmpty {
                 dirs.append(contentsOf: value.split(separator: ":").map(String.init))
@@ -110,6 +121,27 @@ final class CommandRegistry {
         let configHome = env["XDG_CONFIG_HOME"].flatMap { $0.isEmpty ? nil : $0 } ?? (home + "/.config")
         dirs.append(configHome + "/pounce/commands")
         return dirs
+    }
+
+    // The built-in command dir relative to the running binary, for launchers
+    // that don't export POUNCE_BUILTIN_DIR. Mirrors pounce-palette's
+    // `<script dir>/../share/pounce/commands` default. The daemon runs as the
+    // bundle executable (<prefix>/Pounce.app/Contents/MacOS/pounce), so the
+    // keg's share dir is four components up; a plain `<prefix>/bin/pounce`
+    // layout is one deletion shallower — try both, return the first that exists.
+    private static func defaultBuiltinDir() -> String? {
+        guard let exe = Bundle.main.executableURL?.resolvingSymlinksInPath() else { return nil }
+        let candidates = [
+            exe.deletingLastPathComponent()   // …/Contents/MacOS
+               .deletingLastPathComponent()   // …/Contents
+               .deletingLastPathComponent()   // …/Pounce.app
+               .deletingLastPathComponent()   // <prefix>
+               .appendingPathComponent("share/pounce/commands"),
+            exe.deletingLastPathComponent()   // …/bin
+               .deletingLastPathComponent()   // <prefix>
+               .appendingPathComponent("share/pounce/commands"),
+        ]
+        return candidates.first { FileManager.default.fileExists(atPath: $0.path) }?.path
     }
 
     private func idFromFilename(_ name: String) -> String {
