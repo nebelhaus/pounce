@@ -42,6 +42,12 @@ To test inside the full rice without pushing: `bench try` from the workshop
 GitHub rev — after pushing here, ripple with `bench ship` (or `nix flake update
 nebelhaus` in the consumer).
 
+When you open the PR for a `worktree-*` branch, give it a **What / Why / Verify / Watch-out**
+body (see the workshop ship skill's Step 3) — the session that wrote the code is gone by the
+time the change is feel-tested, so a bug found later has to be recoverable from `gh pr view`
+alone, and the **Verify** block is exactly what the workshop's `bench try-batch` checklist
+points back to when it feels several PRs together.
+
 ## Layout
 
 ```
