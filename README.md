@@ -80,8 +80,9 @@ a hotkey to `pounce-palette` in whatever you use for hotkeys (skhd, AeroSpace's
 > still ad-hoc signed and does lose the grant on rebuild; see below.)
 
 To update later, run **Update Pounce** from the palette — it runs `brew update &&
-brew upgrade pounce && brew services restart pounce` in a Terminal window (or do
-that by hand). The command no-ops with a hint on non-Homebrew installs.
+brew upgrade pounce && brew services restart pounce` in the background and
+notifies you when it's done (or do that by hand). The command no-ops with a hint
+on non-Homebrew installs.
 
 ### Requirements
 
