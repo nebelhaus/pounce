@@ -22,6 +22,12 @@ enum Main {
       --find-files           search files & folders by name (Spotlight index)
       --cheatsheet [path]    cheatsheet overlay (default ~/.config/pounce/cheatsheet.json)
 
+    diagnostics:
+      doctor                    check the hotkey path — is the daemon up, is the
+                                in-process hotkey actually firing, or is an
+                                external tool (skhd/AeroSpace/Raycast) or a macOS
+                                shortcut shadowing it
+
     focus (hush):
       focus status              print on/off from the DoNotDisturb DB
       focus toggle              press the DND symbolic-hotkey chord
@@ -59,6 +65,10 @@ enum Main {
         } else if args.contains("--version") {
             // pounceVersion comes from Version.generated.swift (see build.sh).
             print("pounce \(pounceVersion)")
+        } else if args.count >= 2 && args[1] == "doctor" {
+            // Positional, like `focus`: a health check for the hotkey path that
+            // never opens the palette.
+            DoctorMode.run()
         } else if args.count >= 2 && args[1] == "focus" {
             // Positional on purpose: scripts probe `pounce --help` for
             // "focus" before calling, so an older binary never falls through
@@ -130,6 +140,18 @@ enum DaemonMode {
     // change. Seeded by the startup log line below.
     static var lastTrusted: Bool?
     static var accessibilityTimer: Timer?
+
+    // Hotkey lifecycle, exposed for `pounce doctor` (see DoctorMode) and the
+    // shadow-hint below. `registered` = Carbon accepted it; `received` = it has
+    // actually fired at least once. The two diverge exactly when an external
+    // hotkey daemon (skhd/AeroSpace/Raycast) or a system shortcut swallows the
+    // key — the footgun `doctor` exists to name.
+    static var hotkeyEnabled = false
+    static var hotkeyCombo = ""
+    static var hotkeyRegistered = false
+    static var hotkeyReceived = false
+    // One-time guard for the "external client while the hotkey never fired" hint.
+    static var shadowHintLogged = false
 
     // Arms the MRU window switcher (⌘Tab tap) if it's configured, permitted, and
     // not already up. Idempotent, so it's safe to call both at startup and again
@@ -215,12 +237,11 @@ enum DaemonMode {
         // socket — build the launcher from the cached registry + warm app list and
         // present the already-built window straight away. Toggling: a second press
         // while it's up dismisses it (Raycast-style).
-        // Flips true the first time the hotkey actually delivers a press. The
-        // startup log says the key was *registered*; this says it's *received* —
-        // the two diverge exactly when a system shortcut (Spotlight ⌘Space) or a
-        // third-party launcher swallows the key, the failure that leaves the
-        // present log empty despite the user mashing ⌘Space. Logged once.
-        var hotkeyReceived = false
+        // The startup log says the key was *registered*; hotkeyReceived says it's
+        // actually *received* — the two diverge exactly when a system shortcut
+        // (Spotlight ⌘Space) or a third-party launcher swallows the key, the
+        // failure that leaves the present log empty despite the user mashing
+        // ⌘Space. Logged once; also read by `pounce doctor`.
         let presentLauncher: () -> Void = {
             if !hotkeyReceived {
                 hotkeyReceived = true
@@ -270,13 +291,16 @@ enum DaemonMode {
             }
         }
 
+        hotkeyEnabled = settings.hotkey.enabled
+        hotkeyCombo = "\(settings.hotkey.modifiers.joined(separator: "+"))+\(settings.hotkey.key)"
         if settings.hotkey.enabled {
             if let keyCode = HotKeyParser.keyCode(for: settings.hotkey.key) {
                 let modifiers = HotKeyParser.modifierMask(for: settings.hotkey.modifiers)
                 let manager = HotKeyManager(onFire: presentLauncher)
                 if manager.register(keyCode: keyCode, modifiers: modifiers) {
                     hotKey = manager
-                    let combo = "\(settings.hotkey.modifiers.joined(separator: "+"))+\(settings.hotkey.key)"
+                    hotkeyRegistered = true
+                    let combo = hotkeyCombo
                     NSLog("pounce daemon: hotkey \(combo) registered")
                     // Registration succeeding doesn't mean we'll get the key: if
                     // macOS still owns the same combo (Spotlight ⌘Space is the
@@ -375,6 +399,25 @@ enum DaemonMode {
             close(clientFD); return
         }
 
+        // `pounce doctor` asks the live daemon for its hotkey/accessibility state
+        // over the socket (the daemon is the only one that knows whether the
+        // in-process hotkey has actually fired). Reply one JSON line and hang up.
+        if payload.hasPrefix("STATUS") {
+            let status: [String: Any] = [
+                "version": pounceVersion,
+                "accessibility": AXIsProcessTrusted(),
+                "hotkeyEnabled": DaemonMode.hotkeyEnabled,
+                "hotkeyCombo": DaemonMode.hotkeyCombo,
+                "hotkeyRegistered": DaemonMode.hotkeyRegistered,
+                "hotkeyReceived": DaemonMode.hotkeyReceived,
+            ]
+            let json = (try? JSONSerialization.data(withJSONObject: status)) ?? Data("{}".utf8)
+            var reply = json; reply.append(0x0A)
+            reply.withUnsafeBytes { ptr in _ = write(clientFD, ptr.baseAddress!, reply.count) }
+            close(clientFD)
+            return
+        }
+
         // Focus ops arrive as their own one-line protocol ("FOCUS\t<op>") and
         // run HERE, under the daemon's own TCC identity — the whole point:
         // `pounce focus` spawned by the bar pill or a terminal is attributed
@@ -425,6 +468,20 @@ enum DaemonMode {
             if p.count > 4, let m = Int(p[4]) { inv.maxEmpty = m }
             if p.count > 5 && !p[5].isEmpty { inv.cheatsheetPath = p[5] }
             itemLines = Array(lines.dropFirst())
+        }
+
+        // Passive shadow-hint: a launcher request came in over the SOCKET (an
+        // external client — skhd/AeroSpace bound to pounce-palette, a script)
+        // while the daemon's own in-process hotkey is registered yet has never
+        // fired. That's the signature of an external tool shadowing ⌘Space: the
+        // user pays a process-spawn + socket hop every summon instead of the warm
+        // ~12ms path. Log it once so the footgun is visible without running
+        // `pounce doctor`. (Deliberately not gated on the combo matching, since
+        // the client doesn't report which key triggered it.)
+        if inv.launcher, DaemonMode.hotkeyEnabled, DaemonMode.hotkeyRegistered,
+           !DaemonMode.hotkeyReceived, !DaemonMode.shadowHintLogged {
+            DaemonMode.shadowHintLogged = true
+            NSLog("pounce daemon: opened via external client while the in-process hotkey (\(DaemonMode.hotkeyCombo)) has never fired — an external tool (skhd/AeroSpace/Raycast) is likely bound to the same key and shadowing pounce's built-in instant hotkey. Unbind it there to use the fast path, or run `pounce doctor`.")
         }
 
         let semaphore = DispatchSemaphore(value: 0)

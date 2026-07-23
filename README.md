@@ -301,18 +301,39 @@ that starts the daemon should export them:
 | `POUNCE_EXTRA_COMMAND_DIRS` | colon-separated dirs a packager layers on |
 | `POUNCE_COMMAND_PATH` | colon-separated dirs for ad-hoc layering |
 
-`~/.config/pounce/commands` is always searched last (highest precedence). If the
-hotkey can't be registered at all the daemon logs that and leaves the
+`~/.config/pounce/commands` is always searched last (highest precedence). When
+the launch agent exports none of these (e.g. the Homebrew service), the daemon
+falls back to `<prefix>/share/pounce/commands` derived from its own binary — the
+same default `pounce-palette` uses — so the built-in commands still appear. If
+the hotkey can't be registered at all the daemon logs that and leaves the
 external-binder path working.
 
-The case that actually bites is quieter: when macOS still owns your combo —
-Spotlight on ⌘Space — `RegisterEventHotKey` *succeeds* and the system routes the
-key to Spotlight anyway, so the daemon holds a registration it never receives a
-press for. It can't detect that from the registration, so at startup it reads
-`com.apple.symbolichotkeys`, names the colliding shortcut, and warns: free the
-key in System Settings → Keyboard → Keyboard Shortcuts, then restart pounce. It
-also logs the hotkey's first press, so a swallowed hotkey is distinguishable
-from a working one in the log.
+The case that actually bites is quieter, and comes in two flavours — both of
+which `RegisterEventHotKey` *succeeds* on, so the daemon holds a registration it
+never receives a press for:
+
+- **A macOS shortcut owns the combo** — Spotlight on ⌘Space is the classic. At
+  startup the daemon reads `com.apple.symbolichotkeys`, names the colliding
+  shortcut, and warns: free the key in System Settings → Keyboard → Keyboard
+  Shortcuts, then restart pounce.
+- **An external hotkey tool owns the combo** — skhd, AeroSpace, or Raycast bound
+  to the same key runs its own event tap *ahead* of Carbon, so it wins the press
+  (and, if it's bound to `pounce-palette`, spawns a slow client every summon
+  while the fast in-process path sits idle). The daemon logs a hint naming the
+  likely culprit when it's asked to open the launcher over the socket while its
+  own hotkey has never fired.
+
+Either way the daemon also logs the hotkey's **first press**, so a swallowed
+hotkey is distinguishable from a working one in the log — and
+
+```sh
+pounce doctor
+```
+
+rolls it all into one command: is the daemon up, is Accessibility granted, is the
+hotkey **registered but never fired**, is a macOS shortcut or a running external
+hotkey daemon (with a launcher binding in its config) shadowing it. Run it first
+whenever the palette is slow to open or doesn't respond to the key.
 
 The default **nebelung** palette is the desaturated Catppuccin used across the
 [nebelhaus](https://github.com/nebelhaus) rice — it's baked into the binary at
