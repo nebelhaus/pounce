@@ -151,6 +151,7 @@ jobs:
           sed -i -E \
             -e "s#^  version \".*\"#  version \"$VER\"#" \
             -e "s#^  sha256 \".*\"#  sha256 \"$SHA\"#" \
+            -e '/^  revision [0-9]+$/d' \
             Formula/pounce.rb
           if git diff --quiet; then
             echo "formula already current"
